@@ -113,4 +113,8 @@
         where status in (0, 1)
         order by command_id
     </select>
+
+    <select id="countByStatus" resultType="long">
+        select count(*) from async_order_command where status = #{status}
+    </select>
 </mapper>

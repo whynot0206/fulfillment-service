@@ -1,0 +1,41 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "type": "timeseries", "title": "HTTP QPS", "id": 1,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(rate(http_server_requests_seconds_count{application=\"fulfillment-service\"}[1m]))", "legendFormat": "requests/s"}]
+    },
+    {
+      "type": "timeseries", "title": "HTTP P99", "id": 2,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [{"expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"fulfillment-service\"}[5m])))", "legendFormat": "P99"}]
+    },
+    {
+      "type": "stat", "title": "异步命令积压", "id": 3,
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 8},
+      "targets": [{"expr": "sum(fulfillment_async_commands_current{status=~\"pending|processing\"})", "legendFormat": "backlog"}]
+    },
+    {
+      "type": "stat", "title": "限流拒绝", "id": 4,
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 8},
+      "targets": [{"expr": "sum(fulfillment_rate_limit_rejections_total)", "legendFormat": "rejected"}]
+    },
+    {
+      "type": "stat", "title": "库存差异", "id": 5,
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 8},
+      "targets": [{"expr": "fulfillment_inventory_reconciliation_differences", "legendFormat": "differences"}]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["fulfillment", "orders", "inventory"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "timezone": "browser",
+  "title": "履约中台总览",
+  "uid": "fulfillment-overview",
+  "version": 1
+}

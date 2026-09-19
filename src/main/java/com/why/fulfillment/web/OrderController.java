@@ -3,6 +3,8 @@ package com.why.fulfillment.web;
 import com.why.fulfillment.inventory.service.StockReservationItem;
 import com.why.fulfillment.order.entity.Order;
 import com.why.fulfillment.order.service.OrderService;
+import com.why.fulfillment.observability.FulfillmentMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,9 +21,16 @@ import java.util.List;
 public class OrderController {
 
     private final OrderService orderService;
+    private final FulfillmentMetrics metrics;
 
     public OrderController(OrderService orderService) {
+        this(orderService, FulfillmentMetrics.noop());
+    }
+
+    @Autowired
+    public OrderController(OrderService orderService, FulfillmentMetrics metrics) {
         this.orderService = orderService;
+        this.metrics = metrics;
     }
 
     @PostMapping
@@ -53,6 +62,7 @@ public class OrderController {
                 .map(item -> new StockReservationItem(item.skuId(), item.spuId(), item.count()))
                 .toList();
         orderService.createPending(order, items, Duration.ofSeconds(timeoutSeconds));
+        metrics.orderAccepted("mysql");
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(order.getOrderId()));
     }
 

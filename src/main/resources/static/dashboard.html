@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>履约中台运行看板</title>
+  <style>
+    :root { color-scheme: dark; --bg:#07111f; --panel:#101d2d; --line:#26384d; --muted:#8ca0b7; --ok:#3ddc97; --warn:#ffbd59; --bad:#ff6b6b; --accent:#63a4ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:Inter,"Microsoft YaHei",sans-serif; background:radial-gradient(circle at 15% 0,#163250 0,transparent 32%),var(--bg); color:#eef5ff; }
+    main { max-width:1180px; margin:auto; padding:36px 24px 60px; }
+    header { display:flex; justify-content:space-between; align-items:end; gap:20px; margin-bottom:24px; }
+    h1 { margin:0; font-size:30px; } h2 { margin:0 0 14px; font-size:17px; }
+    .subtitle,.updated { color:var(--muted); margin-top:8px; font-size:13px; }
+    .status { display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid var(--line); border-radius:999px; background:#0b1725; }
+    .dot { width:9px; height:9px; border-radius:50%; background:var(--warn); box-shadow:0 0 12px currentColor; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:18px; }
+    .card,.panel { background:linear-gradient(145deg,rgba(18,34,52,.96),rgba(11,24,39,.96)); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:0 16px 40px rgba(0,0,0,.18); }
+    .label { color:var(--muted); font-size:12px; } .value { font-size:29px; font-weight:750; margin-top:8px; }
+    .two { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); font-size:13px; } th { color:var(--muted); font-weight:500; }
+    .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+    a { color:var(--accent); text-decoration:none; } pre { white-space:pre-wrap; color:#ffd7d7; font-size:12px; }
+    @media(max-width:800px){ .grid{grid-template-columns:repeat(2,1fr)} .two{grid-template-columns:1fr} header{align-items:start;flex-direction:column} }
+  </style>
+</head>
+<body><main>
+  <header><div><h1>履约中台运行看板</h1><div class="subtitle">订单入口、异步落库、限流和库存一致性</div></div><div><div class="status"><span id="dot" class="dot"></span><span id="state">正在连接</span></div><div id="updated" class="updated"></div></div></header>
+  <section class="grid">
+    <div class="card"><div class="label">MySQL 路径已接受</div><div id="mysqlOrders" class="value">—</div></div>
+    <div class="card"><div class="label">Redis 路径已接受</div><div id="redisOrders" class="value">—</div></div>
+    <div class="card"><div class="label">异步命令积压</div><div id="backlog" class="value">—</div></div>
+    <div class="card"><div class="label">库存差异</div><div id="differences" class="value">—</div></div>
+  </section>
+  <section class="two">
+    <div class="panel"><h2>订单与异步命令</h2><table><thead><tr><th>项目</th><th>待处理</th><th>成功/已支付</th><th>取消/死信</th></tr></thead><tbody><tr><td>订单</td><td id="orderPending">—</td><td id="orderPaid">—</td><td id="orderCancelled">—</td></tr><tr><td>异步命令</td><td id="commandPending">—</td><td id="commandSucceeded">—</td><td id="commandDead">—</td></tr></tbody></table></div>
+    <div class="panel"><h2>保护机制</h2><table><tbody><tr><th>全局限流拒绝</th><td id="globalRejected">—</td></tr><tr><th>接口限流拒绝</th><td id="endpointRejected">—</td></tr><tr><th>异步重试次数</th><td id="asyncRetried">—</td></tr><tr><th>Prometheus</th><td><a href="/actuator/prometheus" target="_blank">打开指标端点</a></td></tr></tbody></table></div>
+  </section>
+  <section class="panel" style="margin-top:18px"><h2>库存差异清单</h2><div id="reconciliation" class="subtitle">等待数据</div></section>
+</main><script>
+const $=id=>document.getElementById(id), set=(id,v)=>$(id).textContent=v;
+async function refresh(){
+  try{
+    const response=await fetch('/api/operations/dashboard',{cache:'no-store'}); if(!response.ok) throw new Error('HTTP '+response.status);
+    const body=await response.json(), d=body.data, m=d.metrics, c=d.commands, o=d.orders, r=d.reconciliation;
+    set('mysqlOrders',Math.round(m.mysqlOrdersAccepted)); set('redisOrders',Math.round(m.redisOrdersAccepted));
+    set('backlog',c.pending+c.processing); set('differences',r.differences.length);
+    set('orderPending',o.pending); set('orderPaid',o.paid); set('orderCancelled',o.cancelled);
+    set('commandPending',c.pending+' / '+c.processing); set('commandSucceeded',c.succeeded); set('commandDead',c.dead);
+    set('globalRejected',Math.round(m.globalRateLimitRejections)); set('endpointRejected',Math.round(m.endpointRateLimitRejections)); set('asyncRetried',Math.round(m.asyncRetried));
+    $('differences').className='value '+(r.differences.length?'bad':'ok');
+    $('reconciliation').innerHTML=r.differences.length?'<pre>'+JSON.stringify(r.differences,null,2)+'</pre>':'<span class="ok">当前已初始化的 Redis 库存与 MySQL 期望值一致</span>';
+    $('dot').style.background='var(--ok)'; set('state','服务正常'); set('updated','更新于 '+new Date(d.generatedAt).toLocaleTimeString());
+  }catch(error){ $('dot').style.background='var(--bad)'; set('state','连接失败'); set('updated',error.message); }
+}
+refresh(); setInterval(refresh,5000);
+</script></body></html>

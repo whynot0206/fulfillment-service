@@ -2,6 +2,7 @@ package com.why.fulfillment.ratelimit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.why.fulfillment.inventory.redis.RedisTokenBucketService;
+import com.why.fulfillment.observability.FulfillmentMetrics;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -16,7 +17,8 @@ public class RateLimitConfiguration {
     public OrderRedisRateLimitFilter orderRedisRateLimitFilter(
             ObjectProvider<RedisTokenBucketService> tokenBucketServiceProvider,
             RateLimitProperties properties,
-            ObjectMapper objectMapper) {
-        return new OrderRedisRateLimitFilter(tokenBucketServiceProvider, properties, objectMapper);
+            ObjectMapper objectMapper,
+            FulfillmentMetrics metrics) {
+        return new OrderRedisRateLimitFilter(tokenBucketServiceProvider, properties, objectMapper, metrics);
     }
 }

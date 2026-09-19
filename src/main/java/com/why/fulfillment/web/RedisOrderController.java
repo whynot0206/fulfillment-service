@@ -5,6 +5,8 @@ import com.why.fulfillment.inventory.service.StockReservationItem;
 import com.why.fulfillment.order.entity.AsyncOrderCommand;
 import com.why.fulfillment.order.entity.Order;
 import com.why.fulfillment.order.service.AsyncOrderCommandService;
+import com.why.fulfillment.observability.FulfillmentMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,11 +25,20 @@ public class RedisOrderController {
 
     private final RedisInventoryService redisInventoryService;
     private final AsyncOrderCommandService commandService;
+    private final FulfillmentMetrics metrics;
 
     public RedisOrderController(RedisInventoryService redisInventoryService,
                                 AsyncOrderCommandService commandService) {
+        this(redisInventoryService, commandService, FulfillmentMetrics.noop());
+    }
+
+    @Autowired
+    public RedisOrderController(RedisInventoryService redisInventoryService,
+                                AsyncOrderCommandService commandService,
+                                FulfillmentMetrics metrics) {
         this.redisInventoryService = redisInventoryService;
         this.commandService = commandService;
+        this.metrics = metrics;
     }
 
     @PostMapping
@@ -60,6 +71,7 @@ public class RedisOrderController {
     }
 
     private ResponseEntity<ApiResponse<AcceptedOrder>> accepted(AsyncOrderCommand command) {
+        metrics.orderAccepted("redis");
         AcceptedOrder body = new AcceptedOrder(command.getOrderId(), command.getCommandId(),
                 command.getStatus());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.ok(body));

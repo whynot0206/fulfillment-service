@@ -42,4 +42,6 @@ public interface AsyncOrderCommandMapper extends BaseMapper<AsyncOrderCommand> {
 
     /** Commands whose Redis deduction has happened but whose MySQL transaction is not complete. */
     List<AsyncOrderCommand> listOutstandingForReconciliation();
+
+    long countByStatus(@Param("status") int status);
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.why.fulfillment.inventory.redis.RedisTokenBucketResult;
 import com.why.fulfillment.inventory.redis.RedisTokenBucketService;
 import com.why.fulfillment.web.ApiResponse;
+import com.why.fulfillment.observability.FulfillmentMetrics;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,21 +31,25 @@ public class OrderRedisRateLimitFilter extends OncePerRequestFilter {
     private final ObjectProvider<RedisTokenBucketService> tokenBucketServiceProvider;
     private final RateLimitProperties properties;
     private final ObjectMapper objectMapper;
+    private final FulfillmentMetrics metrics;
 
     /** Constructor used by Spring's configuration. */
     public OrderRedisRateLimitFilter(ObjectProvider<RedisTokenBucketService> tokenBucketServiceProvider,
                                      RateLimitProperties properties,
-                                     ObjectMapper objectMapper) {
+                                     ObjectMapper objectMapper,
+                                     FulfillmentMetrics metrics) {
         this.tokenBucketServiceProvider = tokenBucketServiceProvider;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.metrics = metrics;
     }
 
     /** Convenience constructor for focused filter tests and embedding code. */
     public OrderRedisRateLimitFilter(RedisTokenBucketService tokenBucketService,
                                      RateLimitProperties properties,
                                      ObjectMapper objectMapper) {
-        this(new SingleServiceProvider(tokenBucketService), properties, objectMapper);
+        this(new SingleServiceProvider(tokenBucketService), properties, objectMapper,
+                FulfillmentMetrics.noop());
     }
 
     @Override
@@ -71,7 +76,7 @@ public class OrderRedisRateLimitFilter extends OncePerRequestFilter {
                 properties.getGlobal().getRefillPerSecond(),
                 properties.getPermits());
         if (globalResult == null || !globalResult.isAllowed()) {
-            writeRateLimitedResponse(response);
+            writeRateLimitedResponse(response, "global");
             return;
         }
 
@@ -82,7 +87,7 @@ public class OrderRedisRateLimitFilter extends OncePerRequestFilter {
                 properties.getEndpoint().getRefillPerSecond(),
                 properties.getPermits());
         if (endpointResult == null || !endpointResult.isAllowed()) {
-            writeRateLimitedResponse(response);
+            writeRateLimitedResponse(response, "endpoint");
             return;
         }
 
@@ -102,7 +107,8 @@ public class OrderRedisRateLimitFilter extends OncePerRequestFilter {
         return path.startsWith("/") ? path : "/" + path;
     }
 
-    private void writeRateLimitedResponse(HttpServletResponse response) throws IOException {
+    private void writeRateLimitedResponse(HttpServletResponse response, String layer) throws IOException {
+        metrics.rateLimited(layer);
         response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());

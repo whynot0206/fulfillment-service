@@ -2,6 +2,7 @@ package com.why.fulfillment.order.task;
 
 import com.why.fulfillment.order.entity.AsyncOrderCommand;
 import com.why.fulfillment.order.mapper.AsyncOrderCommandMapper;
+import com.why.fulfillment.observability.FulfillmentMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,7 @@ public class AsyncOrderCommandScheduler {
     private final long maxRetryDelaySeconds;
     private final long leaseSeconds;
     private final String leaseOwner;
+    private final FulfillmentMetrics metrics;
 
     public AsyncOrderCommandScheduler(AsyncOrderCommandMapper commandMapper,
                                       AsyncOrderCommandProcessor processor) {
@@ -49,13 +51,24 @@ public class AsyncOrderCommandScheduler {
     }
 
     /** Configuration is explicit so focused tests can instantiate the scheduler directly. */
+    public AsyncOrderCommandScheduler(AsyncOrderCommandMapper commandMapper,
+                                      AsyncOrderCommandProcessor processor,
+                                      int maxRetries,
+                                      long initialRetryDelaySeconds,
+                                      long maxRetryDelaySeconds,
+                                      long leaseSeconds) {
+        this(commandMapper, processor, maxRetries, initialRetryDelaySeconds,
+                maxRetryDelaySeconds, leaseSeconds, FulfillmentMetrics.noop());
+    }
+
     @Autowired
     public AsyncOrderCommandScheduler(AsyncOrderCommandMapper commandMapper,
                                       AsyncOrderCommandProcessor processor,
                                       @Value("${fulfillment.order.async-command.retry.max-retries:5}") int maxRetries,
                                       @Value("${fulfillment.order.async-command.retry.initial-delay-seconds:5}") long initialRetryDelaySeconds,
                                       @Value("${fulfillment.order.async-command.retry.max-delay-seconds:300}") long maxRetryDelaySeconds,
-                                      @Value("${fulfillment.order.async-command.lease-seconds:300}") long leaseSeconds) {
+                                      @Value("${fulfillment.order.async-command.lease-seconds:300}") long leaseSeconds,
+                                      FulfillmentMetrics metrics) {
         this.commandMapper = commandMapper;
         this.processor = processor;
         this.maxRetries = Math.max(0, maxRetries);
@@ -63,6 +76,7 @@ public class AsyncOrderCommandScheduler {
         this.maxRetryDelaySeconds = Math.max(this.initialRetryDelaySeconds, maxRetryDelaySeconds);
         this.leaseSeconds = Math.max(1, leaseSeconds);
         this.leaseOwner = "fulfillment-" + UUID.randomUUID();
+        this.metrics = metrics;
     }
 
     @Scheduled(fixedDelayString = "${fulfillment.order.async-command.poll-ms:500}")
@@ -80,6 +94,7 @@ public class AsyncOrderCommandScheduler {
         }
         try {
             processor.processClaimed(command, leaseOwner);
+            metrics.asyncOutcome("succeeded");
         } catch (RuntimeException exception) {
             handleFailure(command, exception);
         }
@@ -114,6 +129,7 @@ public class AsyncOrderCommandScheduler {
         }
         log.error("Async order command {} moved to dead letter after {} retries: {}",
                 command.getCommandId(), retryCount, message);
+        metrics.asyncOutcome("dead");
     }
 
     private void scheduleRetry(AsyncOrderCommand command, int retryCount, String message) {
@@ -126,6 +142,7 @@ public class AsyncOrderCommandScheduler {
         }
         log.warn("Async order command {} failed; retry {} scheduled at {}: {}",
                 command.getCommandId(), retryCount, nextRetry, message);
+        metrics.asyncOutcome("retry");
     }
 
     private long retryDelaySeconds(int retryCount) {

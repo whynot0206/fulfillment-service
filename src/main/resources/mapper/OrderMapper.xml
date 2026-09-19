@@ -3,6 +3,10 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="com.why.fulfillment.order.mapper.OrderMapper">
+
+    <select id="countByStatus" resultType="long">
+        select count(*) from `order` where status = #{status}
+    </select>
     <update id="cancelIfPending">
         update `order`
         set status = 3

@@ -8,6 +8,8 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface OrderMapper extends BaseMapper<Order> {
 
+    long countByStatus(@Param("status") int status);
+
     int cancelIfPending(@Param("orderId") Long orderId);
 
     int markPaidIfPending(@Param("orderId") Long orderId,

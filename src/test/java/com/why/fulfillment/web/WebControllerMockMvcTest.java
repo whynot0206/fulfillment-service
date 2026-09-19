@@ -4,6 +4,7 @@ import com.why.fulfillment.inventory.entity.SkuStock;
 import com.why.fulfillment.inventory.mapper.SkuStockMapper;
 import com.why.fulfillment.inventory.mapper.SkuStockLockMapper;
 import com.why.fulfillment.inventory.reconciliation.StockReconciliationService;
+import com.why.fulfillment.observability.FulfillmentMetrics;
 import com.why.fulfillment.inventory.service.StockReservationItem;
 import com.why.fulfillment.order.entity.Order;
 import com.why.fulfillment.order.mapper.AsyncOrderCommandMapper;
@@ -73,6 +74,9 @@ class WebControllerMockMvcTest {
 
     @MockBean
     private StockReconciliationService stockReconciliationService;
+
+    @MockBean
+    private FulfillmentMetrics fulfillmentMetrics;
 
     @Test
     void createOrderReturnsCreatedAndMapsRequest() throws Exception {

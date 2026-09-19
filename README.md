@@ -8,6 +8,7 @@
 - 项目本地工具链已安装 Temurin JDK 17.0.20.1 和 Maven 3.9.16；MySQL 8.0.46、`fulfillment` 测试库和本机 Redis 服务均已就绪。
 - 周期 4：已完成真实 MySQL 对照。未排序基线 40 个事务中死锁回滚 20 个，死锁率 50%；按 `skuId` 排序后 40 个事务全部成功，死锁率 0%。
 - 周期 5：已完成 Redis Lua 多 SKU 原子预扣与幂等补偿、持久化命令异步落库、库存对账、双层令牌桶和 JMeter 三轮对比。全量 46 个测试通过。
+- 周期 6：已完成 Actuator、Prometheus 指标、Grafana 预置面板和应用内运行看板。当前全量 47 个测试通过。
 
 M1 的核心边界是：订单与库存预占在本地事务中提交，订单提交后才投递延迟任务；关单只允许把待支付订单改为已取消，随后幂等释放锁定库存。
 
@@ -39,6 +40,7 @@ M1 的核心边界是：订单与库存预占在本地事务中提交，订单�
 本次实测数据和 MySQL 死锁日志摘要保存在 `docs/cycle4-evidence-2026-09-19.md`，
 Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`。
 周期 5 的环境、三轮数据和语义边界保存在 `docs/cycle5-evidence-2026-09-19.md`。
+周期 6 的可观测性验收保存在 `docs/cycle6-observability-2026-09-19.md`。
 
 ## 本地 HTTP 入口
 
@@ -47,8 +49,18 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 - `GET /api/inventory/skus/{skuId}`：查询 SKU 的可售库存和锁定库存。
 - `POST /api/orders/redis`：Redis 原子预扣并写入可靠异步命令，返回 202。
 - `GET /api/inventory/reconciliation`：输出 MySQL 与 Redis 的库存差异清单，不自动修正。
+- `GET /api/operations/dashboard`：返回运行看板所需的订单、积压、限流和对账快照。
+- `/dashboard.html`：本地运行看板页面。
+- `/actuator/prometheus`：Prometheus 指标端点。
 
 这些入口用于本地联调；周期 5 的 JMeter 计划和运行脚本在 `performance` 目录。
+
+## 可观测性
+
+直接启动应用后访问 `http://localhost:8080/dashboard.html` 查看轻量运行看板。需要长期趋势时，
+在 `.env` 中配置 `MYSQL_ROOT_PASSWORD` 和 `GRAFANA_ADMIN_PASSWORD`，再启动 Docker Compose；
+Prometheus 位于 9090，Grafana 位于 3000。预置 Grafana 看板展示 HTTP QPS、P99、异步命令
+积压、限流拒绝和库存差异。
 
 ## 写代码前先回答这几个问题
 
