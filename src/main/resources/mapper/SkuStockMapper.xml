@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.why.fulfillment.inventory.mapper.SkuStockMapper">
+
+    <!-- Intentionally unsafe: the caller supplies a value read before this write. -->
+    <update id="updateStockAbsolute">
+        update sku_stock
+        set stock = #{stock},
+            lock_stock = #{lockStock}
+        where sku_id = #{skuId}
+    </update>
+
+    <update id="reduceStockAtomic">
+        update sku_stock
+        set stock = stock - #{count},
+            lock_stock = lock_stock + #{count}
+        where sku_id = #{skuId}
+          and stock >= #{count}
+    </update>
+
+    <update id="addAvailableStock">
+        update sku_stock
+        set stock = stock + #{count},
+            lock_stock = lock_stock - #{count}
+        where sku_id = #{skuId}
+          and lock_stock >= #{count}
+    </update>
+
+    <update id="consumeLockedStock">
+        update sku_stock
+        set lock_stock = lock_stock - #{count}
+        where sku_id = #{skuId}
+          and lock_stock >= #{count}
+    </update>
+
+</mapper>

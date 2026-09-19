@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.why.fulfillment.inventory.mapper.SkuStockLockMapper">
+    <select id="selectByOrderId" resultType="com.why.fulfillment.inventory.entity.SkuStockLock">
+        <!-- 释放和确认也必须按 sku_id 获取行锁，避免与预占路径形成反向锁顺序。 -->
+        select id, order_id, sku_id, spu_id, `count`, status, create_time, update_time
+        from sku_stock_lock
+        where order_id = #{orderId}
+        order by sku_id
+    </select>
+
+    <update id="markReleasedIfLocked">
+        update sku_stock_lock
+        set status = 2
+        where id = #{id} and status = 1
+    </update>
+
+    <update id="markConfirmedIfLocked">
+        update sku_stock_lock
+        set status = 3
+        where id = #{id} and status = 1
+    </update>
+</mapper>

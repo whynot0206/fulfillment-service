@@ -1,0 +1,31 @@
+MySQL 8.0.46 - SHOW ENGINE INNODB STATUS 摘要
+采集时间：2026-09-19 20:54:11 Asia/Shanghai
+innodb_deadlock_detect=1
+
+LATEST DETECTED DEADLOCK
+2026-09-19 20:53:53
+
+TRANSACTION 1893
+query:
+update sku_stock
+set stock = stock - 1, lock_stock = lock_stock + 1
+where sku_id = 1002 and stock >= 1
+
+holds:
+PRIMARY X record lock, sku_id = 1001
+waiting:
+PRIMARY X record lock, sku_id = 1002
+
+TRANSACTION 1894
+query:
+update sku_stock
+set stock = stock - 1, lock_stock = lock_stock + 1
+where sku_id = 1001 and stock >= 1
+
+holds:
+PRIMARY X record lock, sku_id = 1002
+waiting:
+PRIMARY X record lock, sku_id = 1001
+
+MySQL decision:
+WE ROLL BACK TRANSACTION (2)

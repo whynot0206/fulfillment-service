@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.why.fulfillment.order.mapper.OrderMapper">
+    <update id="cancelIfPending">
+        update `order`
+        set status = 3
+        where order_id = #{orderId}
+          and status = 1
+    </update>
+
+    <update id="markPaidIfPending">
+        update `order`
+        set status = 2,
+            out_trade_no = #{outTradeNo},
+            pay_time = now()
+        where order_id = #{orderId}
+          and status = 1
+    </update>
+</mapper>

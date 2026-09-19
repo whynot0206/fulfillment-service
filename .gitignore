@@ -1,0 +1,19 @@
+# Java and Maven build output
+target/
+*.class
+
+# IDE and local workspace files
+.idea/
+.vscode/
+*.iml
+.env
+
+# Runtime logs
+*.log
+
+# JMeter generated data and HTML reports. The measured summary is kept in docs/.
+performance/results/
+
+# OS files
+.DS_Store
+Thumbs.db

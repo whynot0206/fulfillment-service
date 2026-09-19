@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.why.fulfillment.order.mapper.OrderOutboxEventMapper">
+    <resultMap id="outboxMap" type="com.why.fulfillment.order.entity.OrderOutboxEvent">
+        <id column="event_id" property="eventId"/>
+        <result column="event_type" property="eventType"/>
+        <result column="biz_key" property="bizKey"/>
+        <result column="payload" property="payload"/>
+        <result column="status" property="status"/>
+        <result column="retry_count" property="retryCount"/>
+        <result column="next_retry_time" property="nextRetryTime"/>
+        <result column="last_error" property="lastError"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="eventId" keyColumn="event_id">
+        insert into order_outbox_event
+            (event_type, biz_key, payload, status, retry_count, next_retry_time)
+        values
+            (#{eventType}, #{bizKey}, #{payload}, #{status}, #{retryCount}, #{nextRetryTime})
+    </insert>
+
+    <select id="listReady" resultMap="outboxMap">
+        select event_id, event_type, biz_key, payload, status, retry_count,
+               next_retry_time, last_error, create_time, update_time
+        from order_outbox_event
+        where (status = 0 and next_retry_time &lt;= now())
+           or (status = 1 and update_time &lt;= date_sub(now(), interval 5 minute))
+        order by event_id
+        limit #{limit}
+    </select>
+
+    <update id="claim">
+        update order_outbox_event
+        set status = 1, update_time = now()
+        where event_id = #{eventId}
+          and (status = 0 or (status = 1 and update_time &lt;= date_sub(now(), interval 5 minute)))
+    </update>
+
+    <update id="markSent">
+        update order_outbox_event
+        set status = 2, last_error = null, update_time = now()
+        where event_id = #{eventId} and status = 1
+    </update>
+
+    <update id="reschedule">
+        update order_outbox_event
+        set status = 0,
+            retry_count = #{retryCount},
+            next_retry_time = #{nextRetryTime},
+            last_error = #{lastError},
+            update_time = now()
+        where event_id = #{eventId} and status = 1
+    </update>
+</mapper>

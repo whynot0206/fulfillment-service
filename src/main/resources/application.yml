@@ -1,0 +1,68 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/fulfillment?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # 压测对比时这个值必须前后一致，否则数字不可比。记到你的压测记录里。
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+fulfillment:
+  inventory:
+    reconciliation:
+      enabled: true
+      initial-delay-ms: 30000
+      fixed-delay-ms: 60000
+  rate-limit:
+    # Keep the baseline benchmark free of rate-limit overhead. Enable this
+    # profile explicitly when exercising the two Redis token buckets.
+    enabled: false
+    path: /api/orders/redis
+    permits: 1
+    global-key: fulfillment:rate-limit:global
+    endpoint-key-prefix: "fulfillment:rate-limit:endpoint:"
+    global:
+      capacity: 100
+      refill-per-second: 100
+    endpoint:
+      capacity: 20
+      refill-per-second: 20
+  order:
+    timeout:
+      enabled: true
+      delay-ms: 1800000
+      poll-ms: 500
+      retry:
+        max-retries: 5
+        initial-delay-seconds: 5
+        max-delay-seconds: 300
+    async-command:
+      enabled: true
+      poll-ms: 500
+      lease-seconds: 300
+      retry:
+        max-retries: 5
+        initial-delay-seconds: 5
+        max-delay-seconds: 300
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    # 默认关闭 SQL 标准输出，避免日志 IO 污染并发测试和后续压测结果。
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+logging:
+  level:
+    com.why.fulfillment: info
