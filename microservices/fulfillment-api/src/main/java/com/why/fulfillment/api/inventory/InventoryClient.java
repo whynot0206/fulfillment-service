@@ -26,6 +26,12 @@ public interface InventoryClient {
     @PostMapping("/internal/inventory/confirm")
     InventoryConfirmResponse confirm(@RequestBody InventoryConfirmRequest request);
 
+    @PostMapping("/internal/inventory/redis/reserve")
+    InventoryRedisReserveResponse reserveRedis(@RequestBody InventoryRedisReserveRequest request);
+
+    @PostMapping("/internal/inventory/redis/compensate")
+    InventoryRedisCompensateResponse compensateRedis(@RequestBody InventoryRedisCompensateRequest request);
+
     @GetMapping("/internal/inventory/query/{skuId}")
     InventoryQueryResponse query(@PathVariable("skuId") Long skuId);
 }

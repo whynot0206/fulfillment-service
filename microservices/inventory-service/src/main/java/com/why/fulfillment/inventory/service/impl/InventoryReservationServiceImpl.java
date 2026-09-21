@@ -173,6 +173,15 @@ public class InventoryReservationServiceImpl implements InventoryReservationServ
 
     @Override
     @Transactional(readOnly = true)
+    public List<InventoryReserveItem> reservationItems(Long orderId) {
+        requirePositive(orderId, "orderId");
+        return skuStockLockMapper.selectByOrderId(orderId).stream()
+                .map(lock -> new InventoryReserveItem(lock.getSkuId(), lock.getSpuId(), lock.getCount()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public InventoryQueryResponse query(Long skuId) {
         requirePositive(skuId, "skuId");
         SkuStock stock = skuStockMapper.selectBySkuId(skuId);

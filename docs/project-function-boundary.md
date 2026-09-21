@@ -19,10 +19,12 @@ flowchart LR
     O --> I
     O --> DB
     I --> DB
+    O --> R[(Redis)]
+    I --> R
 ```
 
 - **根目录单体**：周期 0–6 的完整实验与回归基线，覆盖超时关单、Redis 快速下单、异步落库、对账、限流和业务看板。
-- **`microservices` 运行切片**：周期 7–9 持续演进的四进程交易链路，验证 Gateway、Feign、服务间鉴权、Saga 补偿、跨进程 Outbox、订单创建幂等和持久化超时关单。
+- **`microservices` 运行切片**：周期 7–10 持续演进的四进程交易链路，验证 Gateway、Feign、服务间鉴权、Saga 补偿、跨进程 Outbox、订单创建幂等、持久化超时关单和 Redis 快速下单。
 - 两条路径当前共用同一个 MySQL `fulfillment` 库和业务表。联调微服务时必须停止单体，避免两个 Outbox 发布器竞争同一批事件。
 
 ## 2. 功能矩阵
@@ -34,9 +36,9 @@ flowchart LR
 | 支付回调与幂等 | 已实现 | 已实现；增加 HMAC、时间窗和内部令牌 | 已覆盖 |
 | 支付成功 Outbox | 本地调用 Inventory，至少一次投递 | Feign 调 Inventory，最多重试 10 次后进入死信 | 已覆盖；不等于 exactly-once |
 | 超时关单与库存释放 | Redisson 延迟队列、重试和死信 | 周期 9 已实现持久化到期扫描与补偿释放 | 两条路径都有，调度机制不同 |
-| Redis Lua 快速下单 | 已实现 | 未迁移 | 单体独有 |
-| 异步订单落库与死信补偿 | 已实现 | 未迁移 | 单体独有 |
-| Redis/MySQL 库存对账 | 已实现 | 未迁移 | 单体独有 |
+| Redis Lua 快速下单 | 已实现 | 周期 10 已实现；Order 持久化命令，Inventory 执行 Lua | 两条路径都有 |
+| 异步订单落库与死信补偿 | 已实现 | 周期 10 已实现租约、重试和补偿终态 | 两条路径都有，状态表不同 |
+| Redis/MySQL 库存对账 | 已实现 | 周期 10 已实现只读差异报告 | 两条路径都有，不自动修复 |
 | 双层令牌桶限流 | 已实现，默认关闭 | 未迁移 | 单体独有 |
 | 业务看板与自定义指标 | 已实现 | 仅有 Actuator 基础端点 | 单体独有 |
 | Gateway 与 Feign 契约 | 无远程调用 | 已实现 | 微服务独有 |
@@ -52,8 +54,8 @@ flowchart LR
 | 进程/模块 | 默认端口 | 当前职责 | 实际访问的数据 |
 |---|---:|---|---|
 | `gateway` | 18080 | 对外路由 | 不访问数据库 |
-| `order-service` | 18081 | 创建订单、预占状态、支付状态、Outbox 与补偿调度 | `order`、`order_outbox_event` |
-| `inventory-service` | 18082 | 库存预占、释放、确认、查询和取消栅栏 | `sku_stock`、`sku_stock_lock`、`inventory_reservation_fence` |
+| `order-service` | 18081 | 创建订单、预占状态、支付状态、Outbox、Redis 命令与补偿调度 | `order`、`order_item`、`order_outbox_event`、`microservice_order_command` |
+| `inventory-service` | 18082 | 库存预占、释放、确认、Redis 原子预扣、查询、对账和取消栅栏 | `sku_stock`、`sku_stock_lock`、`inventory_reservation_fence`；对账时只读 `microservice_order_command` |
 | `payment-service` | 18083 | 校验支付回调并调用 Order | 不访问数据库 |
 | `fulfillment-api` | - | DTO 与 Feign 契约 | 不包含实体或 Mapper |
 
@@ -75,6 +77,8 @@ flowchart LR
 - 下单使用 `RESERVING → RESERVED / FAILED / PENDING_COMPENSATION / COMPENSATED` 状态推进；未知远程结果通过释放和后台补偿收敛。
 - Inventory 使用 `orderId + skuId` 唯一约束、条件状态更新和取消栅栏保证接口幂等并处理释放早于预占的竞态。
 - 支付状态与 Outbox 在 Order 的本地事务中提交，发布器通过 Feign 至少一次调用 Inventory；连续失败 10 次进入死信，当前需要人工排查和恢复。
+- Redis 快速路径先持久化 Order 命令，再由 Inventory Lua 原子预扣；后台租约任务创建 MySQL 订单，失败时用载荷签名和取消墓碑幂等补偿。
+- 对账公式为 `MySQL 可售库存 - READY/PROCESSING 命令的 Redis 预扣量`，当前只输出差异，不自动改数。
 
 ## 5. 证据等级与可用表述
 
@@ -86,6 +90,9 @@ flowchart LR
 - 周期 5：单机三轮 JMeter 对比中，MySQL 路径中位吞吐 113.30 req/s，Redis 接受路径 342.91 req/s。Redis 的 HTTP 202 只表示命令被可靠接受。
 - 周期 6：根目录单体的 Prometheus 采集目标为 `UP`，Grafana 数据源和看板可加载。
 - 周期 7：本机四进程、共享 MySQL、固定 URL 条件下，完成下单、支付、重复回调、库存确认和库存服务宕机后的补偿联调。
+- 周期 8：相同订单载荷重放不重复扣库存，异载荷返回冲突，订单明细完整持久化。
+- 周期 9：2 秒未支付订单约 2.64 秒完成取消和库存释放，支付成功订单不会被到期扫描覆盖。
+- 周期 10：真实 Gateway Redis 下单完成命令持久化、Lua 预扣和异步订单创建；30 秒到期后 MySQL 与 Redis 均恢复到 20，锁记录进入已释放，对账不再报告该 SKU。
 
 ### 对外必须带上的限定
 
@@ -94,7 +101,7 @@ flowchart LR
 - “微服务主链路已验收”限定为本机四进程、共享 MySQL、固定 URL 的运行切片。
 - “Outbox 可靠投递”应表述为本地事务落库、至少一次投递、幂等消费、有限重试和死信。
 - “安全加固”限定为共享内部令牌、支付 HMAC 和五分钟时间窗；不等于生产身份体系。
-- 周期 7 的 20 项测试主要覆盖服务层、Controller、Feign 契约和 Gateway 路由；真实跨进程结果来自单机联调记录。
+- 周期 10 的 37 项测试覆盖服务层、Controller、Feign 契约、Gateway 路由、Redis 幂等与异步命令状态机；真实跨进程结果来自单机联调记录。
 
 ### 当前不能声称已完成
 
@@ -103,12 +110,12 @@ flowchart LR
 - TLS、密钥轮换、服务身份、用户鉴权、细粒度授权和防重放存储。
 - 微服务全量 Prometheus/Grafana、分布式追踪、集中日志、告警和 SLO。
 - 微服务容量结论；周期 5 的数据来自单机短时单体路径。
-- Redis 快速下单、对账、限流和业务看板已经迁入微服务。
+- 双层令牌桶和业务看板已经迁入微服务。
 - 根目录单体的 `order_item` 已持久化或普通 MySQL 下单接口已经幂等。
 
 ## 6. 里程碑命名
 
-所有当前说明统一使用“周期 0–7”，与规划书顺序对应：
+所有当前说明统一使用“周期 0–10”，与规划书顺序对应：
 
 - **周期 0**：环境与工程骨架。
 - **周期 1**：超卖复现与原子扣减；早期文档曾简称 M0。
@@ -120,6 +127,7 @@ flowchart LR
 - **周期 7**：在原规划之外追加的微服务运行切片。
 - **周期 8**：微服务订单创建幂等与订单明细持久化。
 - **周期 9**：微服务持久化超时关单与库存补偿释放。
+- **周期 10**：微服务 Redis 快速下单、可靠异步落库与库存对账。
 
 “完成”默认只表示实现、自动化测试和对应验收证据完成；不包含规划书要求的个人面试盘问，也不代表生产就绪。
 
@@ -127,9 +135,9 @@ flowchart LR
 
 建议按以下顺序推进：
 
-1. 把 Redis 快速下单、异步命令和对账按服务所有权迁移。
-2. 为 Order 与 Inventory 划分独立 schema 和账号权限，再验证补偿、迁移和回滚。
-3. 接入服务发现，并补多实例 Outbox、故障注入和微服务可观测性。
+1. 为 Order 与 Inventory 划分独立 schema 和账号权限，再验证补偿、迁移和回滚。
+2. 接入服务发现，并补多实例 Outbox、故障注入和微服务可观测性。
+3. 评估双层令牌桶和业务看板是否迁移，先定义微服务容量与运维验收指标。
 
 ## 8. 证据索引
 
@@ -140,4 +148,5 @@ flowchart LR
 - `docs/cycle7-microservices-evidence-2026-09-21.md`
 - `docs/cycle8-order-idempotency-evidence-2026-09-21.md`
 - `docs/cycle9-timeout-close-evidence-2026-09-21.md`
+- `docs/cycle10-redis-microservice-evidence-2026-09-21.md`
 - `docs/audit-remediation-2026-09-19.md`

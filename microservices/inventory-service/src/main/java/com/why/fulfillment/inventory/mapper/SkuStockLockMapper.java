@@ -22,6 +22,11 @@ public interface SkuStockLockMapper {
             + "order by sku_id for update")
     List<SkuStockLock> selectByOrderIdForUpdate(@Param("orderId") Long orderId);
 
+    /** Read-only snapshot used to reconstruct the Redis compensation payload. */
+    @Select("select id, order_id, sku_id, spu_id, `count`, status, create_time, update_time "
+            + "from sku_stock_lock where order_id = #{orderId} order by sku_id")
+    List<SkuStockLock> selectByOrderId(@Param("orderId") Long orderId);
+
     @Insert("insert into sku_stock_lock "
             + "(order_id, sku_id, spu_id, `count`, status) "
             + "values (#{orderId}, #{skuId}, #{spuId}, #{count}, #{status})")

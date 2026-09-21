@@ -468,3 +468,15 @@ InnoDB 对同一行的更新必须串行：行锁从 `UPDATE` 开始持有，直
 Fin Evidence Agent 仍是主线，覆盖 Agent / RAG / 大模型方向；本项目覆盖后端工程与中间件方向。两者不重叠，合起来覆盖后端、Agent、全栈三类岗位。
 
 时间上错开：本项目的压测周期（4–5）不要和 Fin Evidence Agent 的 M0.5 评测脚手架撞在同一周。
+
+---
+
+## 十三、追加周期 10：Redis 快速路径迁入微服务
+
+Order Service 先把完整下单请求写入 `microservice_order_command`，再调用 Inventory Service 的 Lua 脚本原子预扣。后台任务以数据库租约领取命令，复用普通订单创建和 MySQL 库存预占链路；失败路径通过载荷签名和取消墓碑幂等补偿，避免补偿先到、预扣后到。
+
+Inventory Service 负责 Redis 库存键、Lua 脚本、条件补偿和只读对账。对账按 `MySQL 可售库存 - READY/PROCESSING 命令预扣量` 计算期望 Redis 值，只报告差异，不自动修复。Inventory 当前只读访问共享库中的 Order 命令表，是数据库尚未物理拆分阶段的折中。
+
+已通过 37 项微服务自动化测试。真实四进程验收中，2 件库存完成 Redis 预扣和异步订单落库，30 秒未支付后 MySQL 与 Redis 都从 18 恢复到 20；过程中发现并修复了只读事务执行 `SELECT FOR UPDATE` 导致库存释放失败的问题。
+
+下一阶段优先处理 Order 与 Inventory 独立 schema、事件投影式对账、多实例故障注入和微服务可观测性。双层令牌桶与业务看板尚未迁移。

@@ -50,7 +50,7 @@ $env:PAYMENT_CALLBACK_SECRET = '<支付回调 HMAC 密钥>'
   -f .\microservices\pom.xml test
 ```
 
-首次运行前依次执行 `sql/migration-cycle7.sql`、`sql/migration-cycle8.sql` 和 `sql/migration-cycle9.sql`。各服务通过环境变量配置依赖地址，默认指向上表中的本机端口。
+首次运行前依次执行 `sql/migration-cycle7.sql` 至 `sql/migration-cycle10.sql`。各服务通过环境变量配置依赖地址，默认指向上表中的本机端口。
 当前阶段先用明确的服务 URL 验证网络和补偿语义；服务注册中心在这个运行切片通过测试后接入。
 
 支付回调必须携带 `X-Payment-Timestamp`（Unix 秒）和 `X-Payment-Signature`。签名原文为
@@ -81,11 +81,19 @@ Order Service 持久化 `timeout_seconds` 和 `expire_time`。扫描器只领取
 
 默认超时为 1800 秒，允许范围为 1 秒到 7 天。该实现用索引范围扫描代替微服务内 Redis 延迟队列，当前优先保证重启可恢复和一致性；大规模订单下的分片扫描与容量测试仍待验证。
 
+## Redis 快速下单与对账
+
+`POST /api/orders/redis` 先把完整请求写入 `microservice_order_command`，然后调用 Inventory Service 的 Lua 脚本原子预扣多个 SKU。返回 202 表示命令已持久化并进入后台处理，不表示订单已经同步创建。后台任务以数据库租约领取命令，复用普通订单的 MySQL 预占链路，并通过条件更新安全重试。
+
+对于连接中断等结果未知场景，Order Service 会请求强制补偿。Inventory Service 即使尚未看到预扣，也会写入同一订单和载荷的取消墓碑；晚到预扣会被拒绝，避免补偿先到、预扣后到造成库存泄漏。普通超时关单只执行条件补偿，不会为从未走过 Redis 路径的订单制造墓碑。
+
+`GET /api/inventory/reconciliation` 根据 `MySQL 可售库存 - 尚未落库的 Redis 预扣量` 计算期望 Redis 值，只报告缺失和差异，不自动修复。当前 Inventory Service 为此只读访问共享库中的命令表，这是共享数据库阶段的明确折中；数据库物理拆分后应改为事件投影或独立对账数据源。
+
 ## 当前功能边界
 
-- 已迁移：订单主状态与明细、订单创建幂等、超时关单、库存预占/释放/确认、支付回调、订单 Outbox、取消栅栏和故障补偿。
-- 尚未迁入本切片：Redis 快速下单、异步落库、库存对账、令牌桶和业务看板。
+- 已迁移：订单主状态与明细、订单创建幂等、超时关单、库存预占/释放/确认、支付回调、订单 Outbox、取消栅栏、故障补偿、Redis 快速下单、异步落库和只读库存对账。
+- 尚未迁入本切片：双层令牌桶和业务看板。
 - Order 与 Inventory 仍连接同一个 MySQL `fulfillment` 库；代码和本地事务已分进程，数据库尚未物理拆分。
 - 服务地址通过环境变量配置的静态 URL 提供，尚未接入 Nacos。
-- 周期 9 后 Reactor 共 28 项自动化测试，覆盖服务逻辑、金额精度、到期任务竞争、Controller、参数错误响应、Feign 契约和 Gateway 路由；跨进程主链路结果来自本机联调记录。
+- 周期 10 后 Reactor 共 37 项自动化测试，覆盖服务逻辑、金额精度、到期任务竞争、Redis 幂等与取消墓碑、异步命令状态机、Controller、Feign 契约和 Gateway 路由；跨进程主链路结果来自本机联调记录。
 - 内部共享令牌和支付 HMAC 是本地切片的基础请求校验，不等同于 TLS、服务身份、密钥轮换和细粒度授权。

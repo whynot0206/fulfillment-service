@@ -140,3 +140,27 @@ CREATE TABLE IF NOT EXISTS `async_order_command` (
   UNIQUE KEY `uk_async_order_command_order` (`order_id`),
   KEY `idx_async_order_command_ready` (`status`, `next_retry_time`, `lease_until`, `command_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Redis预扣后的异步订单持久化命令';
+
+-- 微服务 Redis 快速路径使用独立命令表，避免单体和 Order Service 的调度器竞争同一行。
+CREATE TABLE IF NOT EXISTS `microservice_order_command` (
+  `command_id` BIGINT NOT NULL AUTO_INCREMENT,
+  `order_id` BIGINT NOT NULL,
+  `user_id` BIGINT NOT NULL,
+  `total_amount` DECIMAL(12,2) NOT NULL,
+  `timeout_seconds` BIGINT NOT NULL,
+  `items_json` TEXT NOT NULL,
+  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '0准备Redis 1待落库 2处理中 3完成 4死信',
+  `redis_reserved` TINYINT(1) NOT NULL DEFAULT 0,
+  `retry_count` INT NOT NULL DEFAULT 0,
+  `next_retry_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `lease_owner` VARCHAR(128) DEFAULT NULL,
+  `lease_until` DATETIME DEFAULT NULL,
+  `last_error` VARCHAR(500) DEFAULT NULL,
+  `dead_letter_time` DATETIME DEFAULT NULL,
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`command_id`),
+  UNIQUE KEY `uk_microservice_order_command_order` (`order_id`),
+  KEY `idx_microservice_order_command_ready` (`status`,`next_retry_time`,`lease_until`,`command_id`),
+  KEY `idx_microservice_order_command_reconciliation` (`redis_reserved`,`status`,`command_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='微服务Redis预扣后的持久化订单命令';

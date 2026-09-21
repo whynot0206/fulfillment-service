@@ -13,5 +13,7 @@ public interface InventoryReservationService {
 
     void confirm(Long orderId);
 
+    List<InventoryReserveItem> reservationItems(Long orderId);
+
     InventoryQueryResponse query(Long skuId);
 }
