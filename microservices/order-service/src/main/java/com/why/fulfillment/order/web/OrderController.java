@@ -1,6 +1,5 @@
 package com.why.fulfillment.order.web;
 
-import com.why.fulfillment.api.inventory.InventoryReserveItem;
 import com.why.fulfillment.order.domain.OrderRecord;
 import com.why.fulfillment.order.service.OrderApplicationService;
 import org.springframework.http.HttpStatus;
@@ -32,10 +31,14 @@ public class OrderController {
         }
         OrderApplicationService.CreateOrderResult result = service.createPending(
                 new OrderApplicationService.CreateOrderCommand(
-                        request.orderId(), request.userId(), request.totalAmount(), request.items()));
+                        request.orderId(), request.userId(), request.totalAmount(),
+                        request.items() == null ? null : request.items().stream()
+                                .map(item -> new OrderApplicationService.OrderItemCommand(
+                                        item.skuId(), item.spuId(), item.count(), item.price()))
+                                .toList()));
         HttpStatus status = switch (result.state()) {
-            case "RESERVED" -> HttpStatus.CREATED;
-            case "FAILED" -> HttpStatus.CONFLICT;
+            case "RESERVED" -> result.replayed() ? HttpStatus.OK : HttpStatus.CREATED;
+            case "FAILED", "CONFLICT" -> HttpStatus.CONFLICT;
             default -> HttpStatus.ACCEPTED;
         };
         return ResponseEntity.status(status).body(result);
@@ -48,6 +51,9 @@ public class OrderController {
     }
 
     public record CreateOrderRequest(long orderId, long userId, BigDecimal totalAmount,
-                                     List<InventoryReserveItem> items) {
+                                     List<CreateOrderItemRequest> items) {
+    }
+
+    public record CreateOrderItemRequest(Long skuId, Long spuId, Integer count, BigDecimal price) {
     }
 }

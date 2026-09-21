@@ -1,6 +1,7 @@
 package com.why.fulfillment.order.repository;
 
 import com.why.fulfillment.order.domain.OrderRecord;
+import com.why.fulfillment.order.domain.OrderItemRecord;
 import com.why.fulfillment.order.domain.OrderStatus;
 import com.why.fulfillment.order.domain.ReservationStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,7 +25,8 @@ public class OrderRepository {
 
     /** Only local writes are transactional; the inventory call is deliberately outside this method. */
     @Transactional
-    public void insertPending(long orderId, long userId, BigDecimal totalAmount) {
+    public void insertPending(long orderId, long userId, BigDecimal totalAmount,
+                              List<OrderItemRecord> items) {
         int inserted = jdbcTemplate.update("""
                 INSERT INTO `order` (order_id, user_id, total_amount, status,
                                      reservation_status, reservation_error)
@@ -33,6 +35,12 @@ public class OrderRepository {
                 ReservationStatus.RESERVING.code());
         if (inserted != 1) {
             throw new IllegalStateException("failed to create order " + orderId);
+        }
+        for (OrderItemRecord item : items) {
+            jdbcTemplate.update("""
+                    INSERT INTO order_item (order_id, sku_id, spu_id, `count`, price)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, orderId, item.skuId(), item.spuId(), item.count(), item.price());
         }
     }
 
@@ -152,11 +160,24 @@ public class OrderRepository {
     }
 
     public Optional<OrderRecord> find(long orderId) {
-        return jdbcTemplate.query("""
+        Optional<OrderRecord> order = jdbcTemplate.query("""
                 SELECT order_id, user_id, total_amount, status,
                        reservation_status, reservation_error, out_trade_no, pay_time
                   FROM `order` WHERE order_id = ?
                 """, this::map, orderId).stream().findFirst();
+        return order.map(record -> new OrderRecord(record.orderId(), record.userId(),
+                record.totalAmount(), record.status(), record.reservationStatus(),
+                record.reservationError(), record.outTradeNo(), record.payTime(),
+                findItems(orderId)));
+    }
+
+    private List<OrderItemRecord> findItems(long orderId) {
+        return jdbcTemplate.query("""
+                SELECT sku_id, spu_id, `count`, price
+                  FROM order_item WHERE order_id = ? ORDER BY sku_id
+                """, (rs, rowNum) -> new OrderItemRecord(
+                rs.getLong("sku_id"), rs.getLong("spu_id"),
+                rs.getInt("count"), rs.getBigDecimal("price")), orderId);
     }
 
     private OrderRecord map(ResultSet rs, int rowNum) throws java.sql.SQLException {
@@ -168,7 +189,8 @@ public class OrderRepository {
                 ReservationStatus.fromCode(rs.getInt("reservation_status")),
                 rs.getString("reservation_error"),
                 rs.getString("out_trade_no"),
-                rs.getObject("pay_time", LocalDateTime.class));
+                rs.getObject("pay_time", LocalDateTime.class),
+                List.of());
     }
 
     private static OrderStatus toOrderStatus(int code) {

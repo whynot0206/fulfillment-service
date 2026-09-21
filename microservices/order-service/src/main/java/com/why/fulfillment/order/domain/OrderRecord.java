@@ -2,6 +2,7 @@ package com.why.fulfillment.order.domain;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record OrderRecord(Long orderId,
                           Long userId,
@@ -10,5 +11,6 @@ public record OrderRecord(Long orderId,
                           ReservationStatus reservationStatus,
                           String reservationError,
                           String outTradeNo,
-                          LocalDateTime payTime) {
+                          LocalDateTime payTime,
+                          List<OrderItemRecord> items) {
 }

@@ -7,15 +7,16 @@ import com.why.fulfillment.api.inventory.InventoryReserveRequest;
 import com.why.fulfillment.api.inventory.InventoryReserveResponse;
 import com.why.fulfillment.api.inventory.InventoryReserveItem;
 import com.why.fulfillment.order.domain.OrderRecord;
+import com.why.fulfillment.order.domain.OrderItemRecord;
 import com.why.fulfillment.order.domain.OrderStatus;
 import com.why.fulfillment.order.domain.ReservationStatus;
 import com.why.fulfillment.order.repository.OrderRepository;
 import feign.FeignException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-import org.springframework.dao.DuplicateKeyException;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,34 +33,50 @@ public class OrderApplicationService {
 
     public CreateOrderResult createPending(CreateOrderCommand command) {
         validate(command);
-        orderRepository.insertPending(command.orderId(), command.userId(), command.totalAmount());
+        CreateOrderCommand normalized = normalize(command);
+        boolean replayed = false;
+        try {
+            orderRepository.insertPending(normalized.orderId(), normalized.userId(), normalized.totalAmount(),
+                    normalized.items().stream().map(OrderItemCommand::toRecord).toList());
+        } catch (DuplicateKeyException duplicate) {
+            OrderRecord existing = orderRepository.find(normalized.orderId()).orElseThrow(() -> duplicate);
+            if (!samePayload(existing, normalized)) {
+                return CreateOrderResult.conflict(normalized.orderId(),
+                        "orderId already exists with a different request payload");
+            }
+            CreateOrderResult terminal = resultForExisting(existing);
+            if (terminal != null) {
+                return terminal;
+            }
+            replayed = true;
+        }
 
         InventoryReserveRequest request = new InventoryReserveRequest(
-                command.orderId(), command.items());
+                normalized.orderId(), normalized.items().stream().map(OrderItemCommand::toInventoryItem).toList());
         try {
             InventoryReserveResponse response = inventoryClient.reserve(request);
             if (isReserved(response)) {
-                orderRepository.updateReservation(command.orderId(), ReservationStatus.RESERVED, null);
-                return CreateOrderResult.reserved(command.orderId());
+                orderRepository.updateReservation(normalized.orderId(), ReservationStatus.RESERVED, null);
+                return CreateOrderResult.reserved(normalized.orderId(), replayed);
             }
             if (isRejected(response)) {
                 String error = response == null ? "inventory rejected without a reason" : response.error();
-                orderRepository.updateReservation(command.orderId(), ReservationStatus.FAILED, error);
-                return CreateOrderResult.failed(command.orderId(), error);
+                orderRepository.updateReservation(normalized.orderId(), ReservationStatus.FAILED, error);
+                return CreateOrderResult.failed(normalized.orderId(), error, replayed);
             }
             String error = response == null || response.error() == null || response.error().isBlank()
                     ? "inventory returned an unknown result" : response.error();
-            return compensateUnknown(command.orderId(), "inventory returned an unknown result: " + error);
+            return compensateUnknown(normalized.orderId(), "inventory returned an unknown result: " + error, replayed);
         } catch (FeignException exception) {
             if (isDeterministicClientRejection(exception)) {
                 String error = "inventory rejected the request (HTTP " + exception.status() + "): "
                         + safeMessage(exception);
-                orderRepository.updateReservation(command.orderId(), ReservationStatus.FAILED, error);
-                return CreateOrderResult.failed(command.orderId(), error);
+                orderRepository.updateReservation(normalized.orderId(), ReservationStatus.FAILED, error);
+                return CreateOrderResult.failed(normalized.orderId(), error, replayed);
             }
-            return compensateUnknown(command.orderId(), describeRemoteFailure(exception));
+            return compensateUnknown(normalized.orderId(), describeRemoteFailure(exception), replayed);
         } catch (RuntimeException exception) {
-            return compensateUnknown(command.orderId(), "inventory call failed: " + safeMessage(exception));
+            return compensateUnknown(normalized.orderId(), "inventory call failed: " + safeMessage(exception), replayed);
         }
     }
 
@@ -72,15 +89,10 @@ public class OrderApplicationService {
             throw new IllegalArgumentException("positive orderId and outTradeNo are required");
         }
         try {
-        try {
             if (orderRepository.markPaidIfPending(orderId, outTradeNo)) {
                 return true;
             }
         } catch (DuplicateKeyException conflict) {
-            return false;
-        }
-        } catch (DuplicateKeyException ignored) {
-            // The unique trade-number key belongs to another order; that callback is rejected.
             return false;
         }
         Optional<OrderRecord> existing = orderRepository.find(orderId);
@@ -109,26 +121,64 @@ public class OrderApplicationService {
         }
     }
 
-    private CreateOrderResult compensateUnknown(long orderId, String reason) {
+    private CreateOrderResult compensateUnknown(long orderId, String reason, boolean replayed) {
         try {
             InventoryReleaseResponse response = inventoryClient.release(new InventoryReleaseRequest(orderId));
             if (isReleased(response)) {
                 orderRepository.updateReservation(orderId, ReservationStatus.COMPENSATED,
                         reason + "; compensation released inventory");
                 return CreateOrderResult.compensated(orderId,
-                        "inventory result was unknown; reservation was canceled");
+                        "inventory result was unknown; reservation was canceled", replayed);
             }
             String releaseError = response == null ? "empty compensation response" : response.error();
             orderRepository.markCompensationPending(orderId,
                     reason + "; compensation failed: " + (releaseError == null ? "unknown" : releaseError));
             return CreateOrderResult.pendingCompensation(orderId,
-                    "inventory result was unknown; compensation is scheduled");
+                    "inventory result was unknown; compensation is scheduled", replayed);
         } catch (RuntimeException compensationFailure) {
             orderRepository.markCompensationPending(orderId,
                     reason + "; compensation call failed: " + safeMessage(compensationFailure));
             return CreateOrderResult.pendingCompensation(orderId,
-                    "inventory result was unknown; compensation is scheduled");
+                    "inventory result was unknown; compensation is scheduled", replayed);
         }
+    }
+
+    private static CreateOrderCommand normalize(CreateOrderCommand command) {
+        List<OrderItemCommand> items = command.items().stream()
+                .sorted(Comparator.comparing(OrderItemCommand::skuId))
+                .toList();
+        return new CreateOrderCommand(command.orderId(), command.userId(), command.totalAmount(), items);
+    }
+
+    private static boolean samePayload(OrderRecord existing, CreateOrderCommand command) {
+        if (existing.userId() != command.userId()
+                || existing.totalAmount().compareTo(command.totalAmount()) != 0
+                || existing.items().size() != command.items().size()) {
+            return false;
+        }
+        for (int index = 0; index < command.items().size(); index++) {
+            OrderItemRecord stored = existing.items().get(index);
+            OrderItemCommand requested = command.items().get(index);
+            if (!stored.skuId().equals(requested.skuId())
+                    || !stored.spuId().equals(requested.spuId())
+                    || !stored.count().equals(requested.count())
+                    || stored.price().compareTo(requested.price()) != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static CreateOrderResult resultForExisting(OrderRecord existing) {
+        return switch (existing.reservationStatus()) {
+            case RESERVED -> CreateOrderResult.reserved(existing.orderId(), true);
+            case FAILED -> CreateOrderResult.failed(existing.orderId(), existing.reservationError(), true);
+            case COMPENSATED -> CreateOrderResult.compensated(existing.orderId(),
+                    "existing request was already compensated", true);
+            case PENDING_COMPENSATION -> CreateOrderResult.pendingCompensation(existing.orderId(),
+                    "existing request is waiting for compensation", true);
+            case RESERVING -> null;
+        };
     }
 
     private static boolean isReserved(InventoryReserveResponse response) {
@@ -162,36 +212,61 @@ public class OrderApplicationService {
     private static void validate(CreateOrderCommand command) {
         if (command == null || command.orderId() <= 0 || command.userId() <= 0
                 || command.totalAmount() == null || command.totalAmount().signum() < 0
+                || !fitsMoneyColumn(command.totalAmount())
                 || command.items() == null || command.items().isEmpty()) {
             throw new IllegalArgumentException("positive orderId/userId, non-negative totalAmount and items are required");
         }
         command.items().forEach(item -> {
             if (item == null || item.skuId() == null || item.spuId() == null
-                    || item.count() == null || item.count() <= 0) {
-                throw new IllegalArgumentException("each item must contain positive skuId, spuId and count");
+                    || item.count() == null || item.count() <= 0 || item.price() == null
+                    || item.price().signum() < 0 || !fitsMoneyColumn(item.price())) {
+                throw new IllegalArgumentException(
+                        "each item must contain positive skuId/spuId/count and a DECIMAL(12,2) price");
             }
         });
+        long distinctSkuCount = command.items().stream().map(OrderItemCommand::skuId).distinct().count();
+        if (distinctSkuCount != command.items().size()) {
+            throw new IllegalArgumentException("duplicate skuId is not allowed in one order");
+        }
+    }
+
+    private static boolean fitsMoneyColumn(BigDecimal value) {
+        return value.scale() <= 2 && value.precision() - value.scale() <= 10;
     }
 
     public record CreateOrderCommand(long orderId, long userId, BigDecimal totalAmount,
-                                     List<InventoryReserveItem> items) {
+                                     List<OrderItemCommand> items) {
     }
 
-    public record CreateOrderResult(long orderId, String state, String message) {
-        static CreateOrderResult reserved(long orderId) {
-            return new CreateOrderResult(orderId, "RESERVED", "inventory reserved");
+    public record OrderItemCommand(Long skuId, Long spuId, Integer count, BigDecimal price) {
+        InventoryReserveItem toInventoryItem() {
+            return new InventoryReserveItem(skuId, spuId, count);
         }
 
-        static CreateOrderResult failed(long orderId, String message) {
-            return new CreateOrderResult(orderId, "FAILED", message);
+        OrderItemRecord toRecord() {
+            return new OrderItemRecord(skuId, spuId, count, price);
+        }
+    }
+
+    public record CreateOrderResult(long orderId, String state, String message, boolean replayed) {
+        static CreateOrderResult reserved(long orderId, boolean replayed) {
+            return new CreateOrderResult(orderId, "RESERVED", "inventory reserved", replayed);
         }
 
-        static CreateOrderResult compensated(long orderId, String message) {
-            return new CreateOrderResult(orderId, "COMPENSATED", message);
+        static CreateOrderResult failed(long orderId, String message, boolean replayed) {
+            return new CreateOrderResult(orderId, "FAILED", message, replayed);
         }
 
-        static CreateOrderResult pendingCompensation(long orderId, String message) {
-            return new CreateOrderResult(orderId, "PENDING_COMPENSATION", message);
+        static CreateOrderResult compensated(long orderId, String message, boolean replayed) {
+            return new CreateOrderResult(orderId, "COMPENSATED", message, replayed);
+        }
+
+        static CreateOrderResult pendingCompensation(long orderId, String message, boolean replayed) {
+            return new CreateOrderResult(orderId, "PENDING_COMPENSATION", message, replayed);
+        }
+
+        static CreateOrderResult conflict(long orderId, String message) {
+            return new CreateOrderResult(orderId, "CONFLICT", message, true);
         }
     }
 }

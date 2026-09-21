@@ -12,6 +12,7 @@
 - 周期 5：已完成 Redis Lua 多 SKU 原子预扣与幂等补偿、持久化命令异步落库、库存对账、双层令牌桶和 JMeter 三轮对比。全量 46 个测试通过。
 - 周期 6：已完成 Actuator、Prometheus 指标、Grafana 预置面板和应用内运行看板；Docker 实测 Prometheus 采集目标为 `UP`，Grafana 数据源和 `Fulfillment` 看板可自动加载。当前全量 47 个测试通过。
 - 周期 7：新增 `microservices` 运行切片，包含 Gateway、Order、Inventory、Payment 四个独立进程和一个 DTO/Feign 契约模块；在本机、共享 MySQL、静态服务 URL 条件下验证了下单预占、支付、Outbox 确认和故障补偿。超时关单、Redis 快速下单、对账、限流和业务看板尚未迁移到该切片。
+- 周期 8：微服务订单创建增加请求幂等和 `order_item` 明细持久化。同一 `orderId` 与相同载荷安全重放，载荷不同返回 409；真实 Gateway 验收确认重复请求不重复扣库存。微服务 Reactor 共 26 项测试通过。
 
 周期 2 的核心边界是：订单与库存预占在本地事务中提交，订单提交后才投递延迟任务；关单只允许把待支付订单改为已取消，随后幂等释放锁定库存。
 
@@ -45,6 +46,7 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 周期 5 的环境、三轮数据和语义边界保存在 `docs/cycle5-evidence-2026-09-19.md`。
 周期 6 的可观测性验收保存在 `docs/cycle6-observability-2026-09-19.md`。
 周期 7 的多进程主链路与故障补偿验收保存在 `docs/cycle7-microservices-evidence-2026-09-21.md`。
+周期 8 的订单幂等与明细验收保存在 `docs/cycle8-order-idempotency-evidence-2026-09-21.md`。
 
 ## 单体 HTTP 入口（8080）
 
@@ -61,8 +63,8 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 
 ## 微服务切片 HTTP 入口（Gateway 18080）
 
-- `POST /api/orders`：创建订单主记录并编排库存预占。
-- `GET /api/orders/{orderId}`：查询订单主状态与预占状态。
+- `POST /api/orders`：持久化订单与商品明细并编排库存预占；商品项包含 `skuId`、`spuId`、`count` 和 `price`。
+- `GET /api/orders/{orderId}`：查询订单主状态、预占状态和商品明细。
 - `POST /api/payments/callbacks/success`：支付成功回调，必须携带时间戳和 HMAC 签名。
 - `GET /api/inventory/skus/{skuId}`：查询库存。
 
