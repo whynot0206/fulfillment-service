@@ -8,7 +8,9 @@ import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -73,8 +75,22 @@ public class RedisOrderCommandRepository {
                   FROM microservice_order_command
                  WHERE status IN (1,2) AND next_retry_time<=CURRENT_TIMESTAMP
                    AND (lease_until IS NULL OR lease_until<CURRENT_TIMESTAMP)
-                 ORDER BY next_retry_time,command_id LIMIT ?
+                ORDER BY next_retry_time,command_id LIMIT ?
                 """, this::map, limit);
+    }
+
+    public Map<Integer, Long> countByStatus() {
+        return jdbcTemplate.query("""
+                SELECT status, COUNT(*) AS status_count
+                  FROM microservice_order_command
+                 GROUP BY status
+                """, rs -> {
+            Map<Integer, Long> counts = new LinkedHashMap<>();
+            while (rs.next()) {
+                counts.put(rs.getInt("status"), rs.getLong("status_count"));
+            }
+            return counts;
+        });
     }
 
     public boolean claim(long commandId, String owner, LocalDateTime leaseUntil) {

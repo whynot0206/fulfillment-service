@@ -492,3 +492,13 @@ Inventory 新增自有 `inventory_redis_reservation` 账本，记录 Redis 预�
 迁移脚本支持停机复制与重复执行，并将旧命令中含价格的商品 JSON 规范化为库存字段。周期 11 已通过 44 项微服务自动化测试和 47 项单体回归；真实四进程、双 schema、最小权限账号验收完成 202 接受、异步落库、3 秒超时关单、MySQL/Redis 双补偿和目标 SKU 一致对账。
 
 下一阶段优先接入服务发现、多实例故障注入和微服务可观测性，并为账本投影增加积压指标、告警和人工恢复入口。
+
+---
+
+## 十五、追加周期 12：微服务可观测性与恢复信号
+
+本周期把已有 Actuator 端点补成可抓取的微服务观测面。四个微服务引入 Prometheus registry，Prometheus 静态目标覆盖 Gateway、Order、Inventory、Payment 四个本地进程。
+
+Order 指标按固定低基数状态暴露 Redis 下单命令和 `PAYMENT_CONFIRMED` Outbox 数量；Inventory 指标暴露 Redis 预占账本的 `PENDING` 数量、最老积压年龄和最近一次只读对账差异数量。指标由定时任务刷新原子值，数据库暂时不可用时保留最近一次成功值，避免抓取路径放大故障。
+
+周期 12 已通过微服务 Reactor 自动化测试和编译验证，端点与 Prometheus targets 的本机验收记录见 `docs/cycle12-observability-evidence-2026-09-21.md`。服务发现、多实例真实故障注入、告警规则和人工恢复入口继续留在后续周期。

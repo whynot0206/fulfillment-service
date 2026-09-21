@@ -111,6 +111,7 @@ flowchart LR
 - Nacos、负载均衡、灰度发布、Seata、RocketMQ 或 MySQL 实例级拆分。
 - TLS、密钥轮换、服务身份、用户鉴权、细粒度授权和防重放存储。
 - 微服务全量 Prometheus/Grafana、分布式追踪、集中日志、告警和 SLO。
+- 周期 12 已完成四个微服务 Prometheus 指标端点与静态抓取配置；多实例告警、分布式追踪、集中日志和 SLO 仍未完成。
 - 微服务容量结论；周期 5 的数据来自单机短时单体路径。
 - 双层令牌桶和业务看板已经迁入微服务。
 - 根目录单体的 `order_item` 已持久化或普通 MySQL 下单接口已经幂等。
@@ -131,6 +132,7 @@ flowchart LR
 - **周期 9**：微服务持久化超时关单与库存补偿释放。
 - **周期 10**：微服务 Redis 快速下单、可靠异步落库与库存对账。
 - **周期 11**：Order / Inventory schema、账号与对账数据所有权隔离。
+- **周期 12**：微服务 Prometheus 指标与运行恢复信号。
 
 “完成”默认只表示实现、自动化测试和对应验收证据完成；不包含规划书要求的个人面试盘问，也不代表生产就绪。
 
@@ -138,8 +140,8 @@ flowchart LR
 
 建议按以下顺序推进：
 
-1. 接入服务发现，并补多实例 Outbox、故障注入和微服务可观测性。
-2. 为 Inventory 账本投影增加积压指标、告警与人工恢复入口。
+1. 接入服务发现，并补多实例 Outbox 和真实故障注入。
+2. 为 Inventory 账本投影增加告警与受保护的人工恢复入口。
 3. 评估双层令牌桶和业务看板是否迁移，先定义微服务容量与运维验收指标。
 
 ## 8. 证据索引
@@ -153,4 +155,5 @@ flowchart LR
 - `docs/cycle9-timeout-close-evidence-2026-09-21.md`
 - `docs/cycle10-redis-microservice-evidence-2026-09-21.md`
 - `docs/cycle11-schema-isolation-evidence-2026-09-21.md`
+- `docs/cycle12-observability-evidence-2026-09-21.md`
 - `docs/audit-remediation-2026-09-19.md`

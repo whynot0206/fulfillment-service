@@ -52,5 +52,18 @@ public class InventoryRedisReservationRepository {
                 rs.getString("items_json"), rs.getInt("status")));
     }
 
+    public PendingMetrics pendingMetrics() {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) AS pending_count,
+                       COALESCE(TIMESTAMPDIFF(SECOND, MIN(create_time), CURRENT_TIMESTAMP), 0)
+                           AS oldest_age_seconds
+                  FROM inventory_redis_reservation
+                 WHERE status = 1
+                """, (rs, rowNum) -> new PendingMetrics(
+                rs.getLong("pending_count"), rs.getLong("oldest_age_seconds")));
+    }
+
     public record LedgerEntry(long orderId, String itemsJson, int status) { }
+
+    public record PendingMetrics(long pendingCount, long oldestAgeSeconds) { }
 }

@@ -16,6 +16,7 @@
 - 周期 9：微服务 Order 增加持久化超时关单。到期扫描通过条件更新与支付竞争，关单后复用库存补偿任务；2 秒真实验收约 2.64 秒完成取消和库存释放，支付成功订单超过期限后保持 `PAID`。微服务 Reactor 共 28 项测试通过。
 - 周期 10：将 Redis Lua 多 SKU 预扣、可靠异步订单落库和只读库存对账迁入微服务切片。Order 先持久化命令再调用 Inventory，失败重试用租约抢占；取消墓碑阻止结果未知时的晚到预扣。超时关单同时补偿 MySQL 与 Redis，微服务 Reactor 共 37 项测试通过。
 - 周期 11：Order 与 Inventory 分别迁入 `fulfillment_order`、`fulfillment_inventory` schema 和最小权限账号。Inventory 用自有 Redis 预扣账本替代对 Order 命令表的直接读取，真实四进程链路完成预扣、异步落库、3 秒超时和双存储补偿；微服务 Reactor 共 44 项测试通过。
+- 周期 12：微服务接入 Prometheus 指标端点，补充订单命令、支付确认 Outbox、Redis 预占账本积压和对账差异指标；Prometheus 配置覆盖 Gateway、Order、Inventory、Payment 四个进程。
 
 周期 2 的核心边界是：订单与库存预占在本地事务中提交，订单提交后才投递延迟任务；关单只允许把待支付订单改为已取消，随后幂等释放锁定库存。
 
@@ -53,6 +54,8 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 周期 9 的超时关单验收保存在 `docs/cycle9-timeout-close-evidence-2026-09-21.md`。
 周期 10 的 Redis 快速下单、超时补偿和对账验收保存在 `docs/cycle10-redis-microservice-evidence-2026-09-21.md`。
 周期 11 的数据库隔离、权限验证和双库存补偿验收保存在 `docs/cycle11-schema-isolation-evidence-2026-09-21.md`。
+
+周期 12 的微服务可观测性验收保存在 `docs/cycle12-observability-evidence-2026-09-21.md`。
 
 ## 单体 HTTP 入口（8080）
 

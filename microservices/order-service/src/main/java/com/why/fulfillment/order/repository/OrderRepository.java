@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.List;
 
@@ -182,6 +184,21 @@ public class OrderRepository {
                  WHERE event_type = 'PAYMENT_CONFIRMED' AND status = 1
                    AND update_time < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 1 MINUTE)
                 """);
+    }
+
+    public Map<Integer, Long> countConfirmationEventsByStatus() {
+        return jdbcTemplate.query("""
+                SELECT status, COUNT(*) AS status_count
+                  FROM order_outbox_event
+                 WHERE event_type = 'PAYMENT_CONFIRMED'
+                 GROUP BY status
+                """, rs -> {
+            Map<Integer, Long> counts = new LinkedHashMap<>();
+            while (rs.next()) {
+                counts.put(rs.getInt("status"), rs.getLong("status_count"));
+            }
+            return counts;
+        });
     }
 
     public Optional<OrderRecord> find(long orderId) {

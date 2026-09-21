@@ -26,6 +26,12 @@ payment:
     max-skew-seconds: ${PAYMENT_CALLBACK_MAX_SKEW_SECONDS:300}
 
 management:
+  metrics:
+    tags:
+      application: fulfillment-payment
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:

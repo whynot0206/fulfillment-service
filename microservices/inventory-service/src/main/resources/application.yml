@@ -24,6 +24,12 @@ internal:
     token: ${INTERNAL_SERVICE_TOKEN:}
 
 management:
+  metrics:
+    tags:
+      application: fulfillment-inventory
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:

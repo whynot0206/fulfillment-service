@@ -109,4 +109,5 @@ Order Service 持久化 `timeout_seconds` 和 `expire_time`。扫描器只领取
 - Order 只访问 `fulfillment_order`，Inventory 只访问 `fulfillment_inventory`；两个最小权限账号的跨 schema 查询均被拒绝。当前仍是同一 MySQL 实例，不代表实例级故障隔离。
 - 服务地址通过环境变量配置的静态 URL 提供，尚未接入 Nacos。
 - 周期 11 后 Reactor 共 44 项自动化测试，覆盖服务逻辑、金额精度、到期任务竞争、Redis 幂等与取消墓碑、Inventory 预扣账本、异步命令状态机、Controller、Feign 契约和 Gateway 路由；跨进程双 schema 主链路结果来自本机联调记录。
+- 周期 12 后四个微服务均依赖 Prometheus registry 并暴露 `/actuator/prometheus`；Order 暴露 Redis 命令和支付确认 Outbox 状态，Inventory 暴露 Redis 预占积压、最老积压年龄和最近一次对账差异。指标由定时刷新缓存，抓取不会直接访问数据库。
 - 内部共享令牌和支付 HMAC 是本地切片的基础请求校验，不等同于 TLS、服务身份、密钥轮换和细粒度授权。

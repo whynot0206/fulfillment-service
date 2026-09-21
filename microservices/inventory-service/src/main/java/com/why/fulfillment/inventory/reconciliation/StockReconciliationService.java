@@ -2,8 +2,10 @@ package com.why.fulfillment.inventory.reconciliation;
 
 import com.why.fulfillment.inventory.entity.SkuStock;
 import com.why.fulfillment.inventory.mapper.SkuStockMapper;
+import com.why.fulfillment.inventory.metrics.InventoryServiceMetrics;
 import com.why.fulfillment.inventory.redis.InventoryRedisLedgerService;
 import com.why.fulfillment.inventory.redis.RedisStockService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,13 +23,23 @@ public class StockReconciliationService {
     private final SkuStockMapper stockMapper;
     private final RedisStockService redisInventoryService;
     private final InventoryRedisLedgerService ledgerService;
+    private final InventoryServiceMetrics metrics;
+
+    @Autowired
+    public StockReconciliationService(SkuStockMapper stockMapper,
+                                      RedisStockService redisInventoryService,
+                                      InventoryRedisLedgerService ledgerService,
+                                      InventoryServiceMetrics metrics) {
+        this.stockMapper = stockMapper;
+        this.redisInventoryService = redisInventoryService;
+        this.ledgerService = ledgerService;
+        this.metrics = metrics;
+    }
 
     public StockReconciliationService(SkuStockMapper stockMapper,
                                       RedisStockService redisInventoryService,
                                       InventoryRedisLedgerService ledgerService) {
-        this.stockMapper = stockMapper;
-        this.redisInventoryService = redisInventoryService;
-        this.ledgerService = ledgerService;
+        this(stockMapper, redisInventoryService, ledgerService, null);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -62,7 +74,11 @@ public class StockReconciliationService {
         }
         pending.forEach((skuId, count) -> errors.add(
                 "outstanding command references missing MySQL SKU " + skuId + " (quantity " + count + ")"));
-        return new ReconciliationReport(LocalDateTime.now(), stocks.size(), differences, errors);
+        ReconciliationReport report = new ReconciliationReport(LocalDateTime.now(), stocks.size(), differences, errors);
+        if (metrics != null) {
+            metrics.recordReconciliation(report.differences().size(), report.errors().size());
+        }
+        return report;
     }
 
     public record ReconciliationReport(LocalDateTime checkedAt, int checkedSkuCount,
