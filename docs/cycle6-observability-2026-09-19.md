@@ -25,9 +25,19 @@
 验收后测试订单已删除，SKU 1001 的 MySQL 库存恢复为 100。全量回归 47 个测试通过，
 0 failures、0 errors、0 skipped。
 
-## 运行边界
+## Docker 监控栈真实验收
 
-本机当前没有 Docker CLI，因此 Prometheus/Grafana Compose 配置已完成静态校验和 Grafana
-JSON 解析，尚未在本机拉起容器。安装 Docker 后，在 `.env` 中设置 MySQL 与 Grafana 密码，
-默认应用端口 8080 启动后执行 `docker compose up -d` 即可。Prometheus 默认抓取
-`host.docker.internal:8080/actuator/prometheus`。
+2026-09-21 使用 Docker Desktop 4.91.0、Docker Engine 29.8.0 和 Compose 5.5.1
+启动 Prometheus 2.54.1 与 Grafana 11.2.0，并对运行中的应用完成验收：
+
+- `fulfillment-prometheus`、`fulfillment-grafana` 容器持续运行，分别监听 9090、3000 端口。
+- Prometheus 实际抓取 `host.docker.internal:8080/actuator/prometheus`，目标状态为 `UP`，
+  `lastError` 为空。
+- Grafana `/api/health` 返回数据库状态 `ok`。
+- Grafana 自动加载名为 `Prometheus` 的数据源和名为 `Fulfillment` 的预置看板。
+- 应用 `/actuator/health` 返回 `UP`，`/dashboard.html` 返回 HTTP 200；Prometheus 端点同时
+  包含业务计数器和 HTTP 请求直方图。
+
+当前本机 MySQL、Redis 使用宿主机服务，因此 Compose 验收只启动 `prometheus` 和 `grafana`，
+避免 3306、6379 端口冲突。完整的新环境仍可通过 `.env` 设置密码后执行
+`docker compose up -d` 启动全部依赖。
