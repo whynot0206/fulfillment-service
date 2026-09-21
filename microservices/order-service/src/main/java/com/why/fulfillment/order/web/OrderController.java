@@ -31,7 +31,7 @@ public class OrderController {
         }
         OrderApplicationService.CreateOrderResult result = service.createPending(
                 new OrderApplicationService.CreateOrderCommand(
-                        request.orderId(), request.userId(), request.totalAmount(),
+                        request.orderId(), request.userId(), request.totalAmount(), request.timeoutSeconds(),
                         request.items() == null ? null : request.items().stream()
                                 .map(item -> new OrderApplicationService.OrderItemCommand(
                                         item.skuId(), item.spuId(), item.count(), item.price()))
@@ -50,7 +50,7 @@ public class OrderController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    public record CreateOrderRequest(long orderId, long userId, BigDecimal totalAmount,
+    public record CreateOrderRequest(long orderId, long userId, BigDecimal totalAmount, Long timeoutSeconds,
                                      List<CreateOrderItemRequest> items) {
     }
 

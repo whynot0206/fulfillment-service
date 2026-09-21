@@ -53,17 +53,23 @@ CREATE TABLE `order` (
   `order_id`      BIGINT       NOT NULL COMMENT '订单ID(雪花或自增)',
   `user_id`       BIGINT       NOT NULL,
   `total_amount`  DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '金额用DECIMAL,不要用double',
+  `timeout_seconds` BIGINT     NOT NULL DEFAULT 1800 COMMENT '待支付超时时间，秒',
   -- 1=待支付 2=已支付 3=已取消(超时关单) 4=已关闭
   `status`        TINYINT      NOT NULL DEFAULT 1 COMMENT '订单状态',
+  `reservation_status` TINYINT NOT NULL DEFAULT 0 COMMENT '0预占中 1已预占 2待补偿 3已补偿 4失败',
+  `reservation_error` VARCHAR(500) DEFAULT NULL,
   `out_trade_no`  VARCHAR(64)  DEFAULT NULL COMMENT '外部支付交易号',
   `pay_time`      DATETIME     DEFAULT NULL,
+  `expire_time`   DATETIME     NOT NULL DEFAULT '9999-12-31 23:59:59' COMMENT '微服务订单支付截止时间；单体由延迟队列关单',
   `create_time`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`order_id`),
   -- 支付回调幂等的基础：同一外部交易号只能对应一次成功支付(第 3 周用)
   UNIQUE KEY `uk_out_trade_no` (`out_trade_no`),
   KEY `idx_user_status` (`user_id`, `status`),
-  KEY `idx_status_create` (`status`, `create_time`)
+  KEY `idx_status_create` (`status`, `create_time`),
+  KEY `idx_order_reservation_status` (`reservation_status`, `update_time`),
+  KEY `idx_order_expiration` (`status`, `reservation_status`, `expire_time`, `order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单';
 
 -- ---------------------------------------------------------------

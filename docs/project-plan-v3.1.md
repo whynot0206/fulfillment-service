@@ -156,7 +156,7 @@ Lua 脚本在 Redis 里完成"判断 + 扣减"，把绝大部分注定失败的�
 
 ### 5.1 目标模块结构与当前落地
 
-下列结构和职责是目标态：Gateway 限流、Order 超时关单、Inventory Redis 预扣与对账尚未全部迁入周期 7 的微服务切片。
+下列结构和职责是目标态：周期 7 至周期 9 已迁入 Gateway 路由、Order 下单编排/支付/超时关单、Inventory 预占/确认/释放和 Payment 回调；Gateway 业务限流、Inventory Redis 预扣与对账尚未迁入微服务切片。
 
 ```
 fulfillment/
@@ -173,7 +173,7 @@ fulfillment/
 
 **`fulfillment-api` 是这个结构里最值得讲的设计。** Feign 接口和 DTO 由服务提供方定义在独立模块里，调用方直接依赖这个模块就能发起调用，不需要各自重复定义一遍 DTO。
 
-截至 2026-09-21，`microservices` 已落地 Gateway、Order、Inventory、Payment 四个进程和一个 `fulfillment-api` 契约模块。当前尚未独立拆出 `common`，Order 与 Inventory 仍使用同一个 MySQL 实例；超时关单、Redis 快速下单、对账、限流和业务看板仍保留在根目录单体。
+截至 2026-09-21，`microservices` 已落地 Gateway、Order、Inventory、Payment 四个进程和一个 `fulfillment-api` 契约模块。Order 已具备持久化到期时间、条件关单和失败补偿恢复。当前尚未独立拆出 `common`，Order 与 Inventory 仍使用同一个 MySQL 实例；Redis 快速下单、对账、Gateway 业务限流和业务看板仍保留在根目录单体。
 
 **关键洞察：** api 模块里**只放 DTO，绝不放 entity**。entity 是数据库映射，属于服务内部实现；DTO 是对外契约。把 entity 暴露出去，就等于把库表结构变成了公开接口——以后改个字段名，所有调用方一起崩。这个区分面试常问，而且很多人答不清。
 
@@ -344,13 +344,19 @@ Redis 和 MySQL 的库存不一致了怎么办，你怎么发现的？Lua 为什
 
 落地 Gateway、Order、Inventory、Payment 四个独立进程和 DTO/Feign 契约模块，以 Saga 状态、取消栅栏、补偿任务和订单本地 Outbox 验证真实 HTTP 边界。
 
-当前边界是本机进程、共享 MySQL、通过环境变量配置的静态服务 URL。Nacos、数据库物理拆分、多实例验证，以及超时关单、Redis 快速下单、对账、限流和业务看板的迁移仍属于后续工作。
+当前边界是本机进程、共享 MySQL、通过环境变量配置的静态服务 URL。Nacos、数据库物理拆分、多实例验证，以及 Redis 快速下单、对账、Gateway 业务限流和业务看板的迁移仍属于后续工作。
 
 ### 周期 8（追加）：订单创建幂等与明细持久化
 
 Order Service 将订单主表和 `order_item` 放在同一个本地事务中写入。重复订单号不直接视为成功，而是比较用户、金额和完整商品载荷：相同请求返回既有状态，不同请求返回冲突；停在 `RESERVING` 的同载荷请求可重新调用库存幂等接口恢复流程。
 
-该能力已经通过 26 项微服务测试和本机 Gateway 联调。根目录单体普通 MySQL 下单入口仍未迁入这套幂等与明细语义；下一阶段优先迁移超时关单。
+该能力已经通过 26 项微服务测试和本机 Gateway 联调。根目录单体普通 MySQL 下单入口仍未迁入这套幂等与明细语义。
+
+### 周期 9（追加）：持久化超时关单与补偿恢复
+
+Order Service 在创建订单时持久化 `timeout_seconds` 和 `expire_time`。定时任务只扫描 `PENDING_PAYMENT / RESERVED` 的到期订单，通过条件更新与支付回调竞争；抢占成功后把订单改为 `CANCELED / PENDING_COMPENSATION`，再复用库存释放和补偿重试链路完成恢复。即使进程在关单后、释放库存前崩溃，既有补偿任务也能继续处理。
+
+该能力已经通过 28 项微服务测试。真实 Gateway 联调中，2 秒未支付订单约 2.64 秒后进入 `CANCELED / COMPENSATED`，库存和锁定量恢复；支付成功订单超过原到期时间后仍保持 `PAID`，库存锁定记录只确认一次。下一阶段优先把 Redis 快速库存路径和对账闭环迁入 Inventory Service。
 
 ---
 

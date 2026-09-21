@@ -25,14 +25,16 @@ public class OrderRepository {
 
     /** Only local writes are transactional; the inventory call is deliberately outside this method. */
     @Transactional
-    public void insertPending(long orderId, long userId, BigDecimal totalAmount,
+    public void insertPending(long orderId, long userId, BigDecimal totalAmount, long timeoutSeconds,
                               List<OrderItemRecord> items) {
         int inserted = jdbcTemplate.update("""
-                INSERT INTO `order` (order_id, user_id, total_amount, status,
-                                     reservation_status, reservation_error)
-                VALUES (?, ?, ?, ?, ?, NULL)
-                """, orderId, userId, totalAmount, OrderStatus.PENDING_PAYMENT.code(),
-                ReservationStatus.RESERVING.code());
+                INSERT INTO `order` (order_id, user_id, total_amount, timeout_seconds,
+                                     status, reservation_status, reservation_error, expire_time)
+                VALUES (?, ?, ?, ?, ?, ?, NULL,
+                        TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP))
+                """, orderId, userId, totalAmount, timeoutSeconds,
+                OrderStatus.PENDING_PAYMENT.code(),
+                ReservationStatus.RESERVING.code(), timeoutSeconds);
         if (inserted != 1) {
             throw new IllegalStateException("failed to create order " + orderId);
         }
@@ -75,6 +77,29 @@ public class OrderRepository {
                  WHERE reservation_status = ?
                  ORDER BY update_time, order_id LIMIT ?
                 """, Long.class, ReservationStatus.PENDING_COMPENSATION.code(), limit);
+    }
+
+    public List<Long> findExpiredReservedOrderIds(int limit) {
+        return jdbcTemplate.queryForList("""
+                SELECT order_id FROM `order`
+                 WHERE status = ? AND reservation_status = ?
+                   AND expire_time <= CURRENT_TIMESTAMP
+                 ORDER BY expire_time, order_id LIMIT ?
+                """, Long.class, OrderStatus.PENDING_PAYMENT.code(),
+                ReservationStatus.RESERVED.code(), limit);
+    }
+
+    @Transactional
+    public boolean markExpiredForCompensation(long orderId) {
+        return jdbcTemplate.update("""
+                UPDATE `order`
+                   SET status = ?, reservation_status = ?,
+                       reservation_error = 'payment timeout; inventory release pending',
+                       update_time = CURRENT_TIMESTAMP
+                 WHERE order_id = ? AND status = ? AND reservation_status = ?
+                   AND expire_time <= CURRENT_TIMESTAMP
+                """, OrderStatus.CANCELED.code(), ReservationStatus.PENDING_COMPENSATION.code(),
+                orderId, OrderStatus.PENDING_PAYMENT.code(), ReservationStatus.RESERVED.code()) == 1;
     }
 
     @Transactional
@@ -161,14 +186,14 @@ public class OrderRepository {
 
     public Optional<OrderRecord> find(long orderId) {
         Optional<OrderRecord> order = jdbcTemplate.query("""
-                SELECT order_id, user_id, total_amount, status,
-                       reservation_status, reservation_error, out_trade_no, pay_time
+                SELECT order_id, user_id, total_amount, timeout_seconds, status,
+                       reservation_status, reservation_error, out_trade_no, pay_time, expire_time
                   FROM `order` WHERE order_id = ?
                 """, this::map, orderId).stream().findFirst();
         return order.map(record -> new OrderRecord(record.orderId(), record.userId(),
-                record.totalAmount(), record.status(), record.reservationStatus(),
+                record.totalAmount(), record.timeoutSeconds(), record.status(), record.reservationStatus(),
                 record.reservationError(), record.outTradeNo(), record.payTime(),
-                findItems(orderId)));
+                record.expireTime(), findItems(orderId)));
     }
 
     private List<OrderItemRecord> findItems(long orderId) {
@@ -185,11 +210,13 @@ public class OrderRepository {
                 rs.getLong("order_id"),
                 rs.getLong("user_id"),
                 rs.getBigDecimal("total_amount"),
+                rs.getLong("timeout_seconds"),
                 toOrderStatus(rs.getInt("status")),
                 ReservationStatus.fromCode(rs.getInt("reservation_status")),
                 rs.getString("reservation_error"),
                 rs.getString("out_trade_no"),
                 rs.getObject("pay_time", LocalDateTime.class),
+                rs.getObject("expire_time", LocalDateTime.class),
                 List.of());
     }
 

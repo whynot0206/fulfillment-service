@@ -7,10 +7,12 @@ import java.util.List;
 public record OrderRecord(Long orderId,
                           Long userId,
                           BigDecimal totalAmount,
+                          Long timeoutSeconds,
                           OrderStatus status,
                           ReservationStatus reservationStatus,
                           String reservationError,
                           String outTradeNo,
                           LocalDateTime payTime,
+                          LocalDateTime expireTime,
                           List<OrderItemRecord> items) {
 }

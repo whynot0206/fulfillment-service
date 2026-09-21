@@ -34,6 +34,7 @@ class OrderApplicationServiceTest {
     private final OrderApplicationService service = new OrderApplicationService(repository, inventory);
     private final OrderApplicationService.CreateOrderCommand command =
             new OrderApplicationService.CreateOrderCommand(10L, 20L, BigDecimal.TEN,
+                    1800L,
                     List.of(new OrderApplicationService.OrderItemCommand(
                             1001L, 1L, 2, new BigDecimal("5.00"))));
 
@@ -94,7 +95,7 @@ class OrderApplicationServiceTest {
     @Test
     void sameCompletedRequestReturnsIdempotentSuccessWithoutReservingAgain() {
         doThrow(new DuplicateKeyException("duplicate order"))
-                .when(repository).insertPending(eq(10L), eq(20L), eq(BigDecimal.TEN), any());
+                .when(repository).insertPending(eq(10L), eq(20L), eq(BigDecimal.TEN), eq(1800L), any());
         when(repository.find(10L)).thenReturn(Optional.of(existing(ReservationStatus.RESERVED)));
 
         OrderApplicationService.CreateOrderResult result = service.createPending(command);
@@ -107,7 +108,7 @@ class OrderApplicationServiceTest {
     @Test
     void sameInFlightRequestSafelyResumesIdempotentInventoryReservation() {
         doThrow(new DuplicateKeyException("duplicate order"))
-                .when(repository).insertPending(eq(10L), eq(20L), eq(BigDecimal.TEN), any());
+                .when(repository).insertPending(eq(10L), eq(20L), eq(BigDecimal.TEN), eq(1800L), any());
         when(repository.find(10L)).thenReturn(Optional.of(existing(ReservationStatus.RESERVING)));
         when(inventory.reserve(any())).thenReturn(InventoryReserveResponse.reserved());
 
@@ -121,10 +122,11 @@ class OrderApplicationServiceTest {
     @Test
     void reusedOrderIdWithDifferentPayloadReturnsConflict() {
         doThrow(new DuplicateKeyException("duplicate order"))
-                .when(repository).insertPending(eq(10L), eq(20L), eq(BigDecimal.TEN), any());
-        OrderRecord different = new OrderRecord(10L, 20L, BigDecimal.TEN,
+                .when(repository).insertPending(eq(10L), eq(20L), eq(BigDecimal.TEN), eq(1800L), any());
+        OrderRecord different = new OrderRecord(10L, 20L, BigDecimal.TEN, 1800L,
                 OrderStatus.PENDING_PAYMENT, ReservationStatus.RESERVED, null,
-                null, null, List.of(new OrderItemRecord(1001L, 1L, 2, new BigDecimal("6.00"))));
+                null, null, null,
+                List.of(new OrderItemRecord(1001L, 1L, 2, new BigDecimal("6.00"))));
         when(repository.find(10L)).thenReturn(Optional.of(different));
 
         OrderApplicationService.CreateOrderResult result = service.createPending(command);
@@ -137,18 +139,20 @@ class OrderApplicationServiceTest {
     void priceWithMoreThanTwoDecimalPlacesIsRejectedBeforePersistence() {
         OrderApplicationService.CreateOrderCommand invalid =
                 new OrderApplicationService.CreateOrderCommand(10L, 20L, BigDecimal.TEN,
+                        1800L,
                         List.of(new OrderApplicationService.OrderItemCommand(
                                 1001L, 1L, 2, new BigDecimal("5.001"))));
 
         assertThatThrownBy(() -> service.createPending(invalid))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("DECIMAL(12,2)");
-        verify(repository, never()).insertPending(anyLong(), anyLong(), any(), any());
+        verify(repository, never()).insertPending(anyLong(), anyLong(), any(), anyLong(), any());
     }
 
     private static OrderRecord existing(ReservationStatus reservationStatus) {
-        return new OrderRecord(10L, 20L, BigDecimal.TEN, OrderStatus.PENDING_PAYMENT,
+        return new OrderRecord(10L, 20L, BigDecimal.TEN, 1800L, OrderStatus.PENDING_PAYMENT,
                 reservationStatus, null, null, null,
+                null,
                 List.of(new OrderItemRecord(1001L, 1L, 2, new BigDecimal("5.00"))));
     }
 }

@@ -50,7 +50,7 @@ $env:PAYMENT_CALLBACK_SECRET = '<支付回调 HMAC 密钥>'
   -f .\microservices\pom.xml test
 ```
 
-首次运行前依次执行 `sql/migration-cycle7.sql` 和 `sql/migration-cycle8.sql`。各服务通过环境变量配置依赖地址，默认指向上表中的本机端口。
+首次运行前依次执行 `sql/migration-cycle7.sql`、`sql/migration-cycle8.sql` 和 `sql/migration-cycle9.sql`。各服务通过环境变量配置依赖地址，默认指向上表中的本机端口。
 当前阶段先用明确的服务 URL 验证网络和补偿语义；服务注册中心在这个运行切片通过测试后接入。
 
 支付回调必须携带 `X-Payment-Timestamp`（Unix 秒）和 `X-Payment-Signature`。签名原文为
@@ -66,19 +66,26 @@ $env:PAYMENT_CALLBACK_SECRET = '<支付回调 HMAC 密钥>'
   "orderId": 980001,
   "userId": 880001,
   "totalAmount": 19.98,
+  "timeoutSeconds": 1800,
   "items": [
     {"skuId": 980001, "spuId": 9800, "count": 2, "price": 9.99}
   ]
 }
 ```
 
-订单主表和 `order_item` 在 Order Service 的同一本地事务中提交。同一 `orderId` 重放时会比较用户、金额和规范化后的全部商品字段：载荷相同则返回既有状态；载荷不同返回 409。若既有订单仍停在 `RESERVING`，服务会再次调用具备幂等语义的库存预占接口以恢复中断流程。
+订单主表和 `order_item` 在 Order Service 的同一本地事务中提交。同一 `orderId` 重放时会比较用户、金额、超时时长和规范化后的全部商品字段：载荷相同则返回既有状态；载荷不同返回 409。若既有订单仍停在 `RESERVING`，服务会再次调用具备幂等语义的库存预占接口以恢复中断流程。
+
+## 超时关单
+
+Order Service 持久化 `timeout_seconds` 和 `expire_time`。扫描器只领取“待支付、库存已预占且已经到期”的订单，并通过条件更新把订单改为取消和待补偿；支付回调也使用状态条件更新，因此同一订单只有一个分支能够成功。库存释放复用补偿任务，Order 进程在关单提交后退出也不会丢失待释放状态。
+
+默认超时为 1800 秒，允许范围为 1 秒到 7 天。该实现用索引范围扫描代替微服务内 Redis 延迟队列，当前优先保证重启可恢复和一致性；大规模订单下的分片扫描与容量测试仍待验证。
 
 ## 当前功能边界
 
-- 已迁移：订单主状态与明细、订单创建幂等、库存预占/释放/确认、支付回调、订单 Outbox、取消栅栏和故障补偿。
-- 尚未迁入本切片：超时关单、Redis 快速下单、异步落库、库存对账、令牌桶和业务看板。
+- 已迁移：订单主状态与明细、订单创建幂等、超时关单、库存预占/释放/确认、支付回调、订单 Outbox、取消栅栏和故障补偿。
+- 尚未迁入本切片：Redis 快速下单、异步落库、库存对账、令牌桶和业务看板。
 - Order 与 Inventory 仍连接同一个 MySQL `fulfillment` 库；代码和本地事务已分进程，数据库尚未物理拆分。
 - 服务地址通过环境变量配置的静态 URL 提供，尚未接入 Nacos。
-- 周期 8 后 Reactor 共 26 项自动化测试，覆盖服务逻辑、金额精度、Controller、参数错误响应、Feign 契约和 Gateway 路由；跨进程主链路结果来自本机联调记录。
+- 周期 9 后 Reactor 共 28 项自动化测试，覆盖服务逻辑、金额精度、到期任务竞争、Controller、参数错误响应、Feign 契约和 Gateway 路由；跨进程主链路结果来自本机联调记录。
 - 内部共享令牌和支付 HMAC 是本地切片的基础请求校验，不等同于 TLS、服务身份、密钥轮换和细粒度授权。

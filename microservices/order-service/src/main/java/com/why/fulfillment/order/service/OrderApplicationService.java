@@ -23,6 +23,9 @@ import java.util.Optional;
 @Service
 public class OrderApplicationService {
 
+    private static final long DEFAULT_TIMEOUT_SECONDS = 1800;
+    private static final long MAX_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
+
     private final OrderRepository orderRepository;
     private final InventoryClient inventoryClient;
 
@@ -37,6 +40,7 @@ public class OrderApplicationService {
         boolean replayed = false;
         try {
             orderRepository.insertPending(normalized.orderId(), normalized.userId(), normalized.totalAmount(),
+                    normalized.timeoutSeconds(),
                     normalized.items().stream().map(OrderItemCommand::toRecord).toList());
         } catch (DuplicateKeyException duplicate) {
             OrderRecord existing = orderRepository.find(normalized.orderId()).orElseThrow(() -> duplicate);
@@ -147,12 +151,16 @@ public class OrderApplicationService {
         List<OrderItemCommand> items = command.items().stream()
                 .sorted(Comparator.comparing(OrderItemCommand::skuId))
                 .toList();
-        return new CreateOrderCommand(command.orderId(), command.userId(), command.totalAmount(), items);
+        long timeoutSeconds = command.timeoutSeconds() == null
+                ? DEFAULT_TIMEOUT_SECONDS : command.timeoutSeconds();
+        return new CreateOrderCommand(command.orderId(), command.userId(), command.totalAmount(),
+                timeoutSeconds, items);
     }
 
     private static boolean samePayload(OrderRecord existing, CreateOrderCommand command) {
         if (existing.userId() != command.userId()
                 || existing.totalAmount().compareTo(command.totalAmount()) != 0
+                || !existing.timeoutSeconds().equals(command.timeoutSeconds())
                 || existing.items().size() != command.items().size()) {
             return false;
         }
@@ -213,8 +221,11 @@ public class OrderApplicationService {
         if (command == null || command.orderId() <= 0 || command.userId() <= 0
                 || command.totalAmount() == null || command.totalAmount().signum() < 0
                 || !fitsMoneyColumn(command.totalAmount())
+                || (command.timeoutSeconds() != null && (command.timeoutSeconds() <= 0
+                    || command.timeoutSeconds() > MAX_TIMEOUT_SECONDS))
                 || command.items() == null || command.items().isEmpty()) {
-            throw new IllegalArgumentException("positive orderId/userId, non-negative totalAmount and items are required");
+            throw new IllegalArgumentException(
+                    "positive orderId/userId, DECIMAL(12,2) totalAmount, valid timeoutSeconds and items are required");
         }
         command.items().forEach(item -> {
             if (item == null || item.skuId() == null || item.spuId() == null
@@ -234,7 +245,7 @@ public class OrderApplicationService {
         return value.scale() <= 2 && value.precision() - value.scale() <= 10;
     }
 
-    public record CreateOrderCommand(long orderId, long userId, BigDecimal totalAmount,
+    public record CreateOrderCommand(long orderId, long userId, BigDecimal totalAmount, Long timeoutSeconds,
                                      List<OrderItemCommand> items) {
     }
 

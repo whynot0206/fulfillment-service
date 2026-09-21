@@ -2,7 +2,7 @@
 
 ## 当前实现状态
 
-仓库包含两条运行路径：根目录单体是周期 0–6 的完整实验与回归基线；`microservices` 是周期 7 的跨进程交易切片。两者的功能覆盖不同，统一边界见 [`docs/project-function-boundary.md`](docs/project-function-boundary.md)。
+仓库包含两条运行路径：根目录单体是周期 0–6 的完整实验与回归基线；`microservices` 是周期 7–9 持续演进的跨进程交易切片。两者的功能覆盖不同，统一边界见 [`docs/project-function-boundary.md`](docs/project-function-boundary.md)。
 
 - 周期 1（旧文档简称 M0）：已完成并实测。连接池上限 20、300 个请求的一次复验中，普通先查后扣超卖 245 件，加本地事务后仍超卖 278 件，原子 SQL 超卖 0 件。
 - 周期 2（旧文档简称 M1）：已完成真实 Redis 端到端验收。2 秒超时订单自动取消，预占的 3 件库存完整释放，可售库存恢复且锁定库存归零。
@@ -11,8 +11,9 @@
 - 周期 4：已完成真实 MySQL 对照。未排序基线 40 个事务中死锁回滚 20 个，死锁率 50%；按 `skuId` 排序后 40 个事务全部成功，死锁率 0%。
 - 周期 5：已完成 Redis Lua 多 SKU 原子预扣与幂等补偿、持久化命令异步落库、库存对账、双层令牌桶和 JMeter 三轮对比。全量 46 个测试通过。
 - 周期 6：已完成 Actuator、Prometheus 指标、Grafana 预置面板和应用内运行看板；Docker 实测 Prometheus 采集目标为 `UP`，Grafana 数据源和 `Fulfillment` 看板可自动加载。当前全量 47 个测试通过。
-- 周期 7：新增 `microservices` 运行切片，包含 Gateway、Order、Inventory、Payment 四个独立进程和一个 DTO/Feign 契约模块；在本机、共享 MySQL、静态服务 URL 条件下验证了下单预占、支付、Outbox 确认和故障补偿。超时关单、Redis 快速下单、对账、限流和业务看板尚未迁移到该切片。
+- 周期 7：新增 `microservices` 运行切片，包含 Gateway、Order、Inventory、Payment 四个独立进程和一个 DTO/Feign 契约模块；在本机、共享 MySQL、静态服务 URL 条件下验证了下单预占、支付、Outbox 确认和故障补偿。
 - 周期 8：微服务订单创建增加请求幂等和 `order_item` 明细持久化。同一 `orderId` 与相同载荷安全重放，载荷不同返回 409；真实 Gateway 验收确认重复请求不重复扣库存。微服务 Reactor 共 26 项测试通过。
+- 周期 9：微服务 Order 增加持久化超时关单。到期扫描通过条件更新与支付竞争，关单后复用库存补偿任务；2 秒真实验收约 2.64 秒完成取消和库存释放，支付成功订单超过期限后保持 `PAID`。微服务 Reactor 共 28 项测试通过。
 
 周期 2 的核心边界是：订单与库存预占在本地事务中提交，订单提交后才投递延迟任务；关单只允许把待支付订单改为已取消，随后幂等释放锁定库存。
 
@@ -31,7 +32,7 @@
 
 ## 跑起来的顺序
 
-当前使用本机 `MySQL80` 服务和 `fulfillment` 数据库。新环境可执行 `sql/schema.sql` 初始化；若使用 Docker，再运行 `docker compose up -d`。
+当前使用本机 `MySQL80` 服务和 `fulfillment` 数据库。新环境可执行 `sql/schema.sql` 初始化；升级已有数据库时按周期执行 `microservices/sql/migration-cycle7.sql`、`migration-cycle8.sql` 和 `migration-cycle9.sql`。若使用 Docker，再运行 `docker compose up -d`。
 
 启动应用或运行测试前，通过环境变量提供数据库密码：PowerShell 使用
 `$env:MYSQL_PASSWORD = '<你的本地密码>'`。Docker Compose 请先复制 `.env.example`
@@ -47,6 +48,7 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 周期 6 的可观测性验收保存在 `docs/cycle6-observability-2026-09-19.md`。
 周期 7 的多进程主链路与故障补偿验收保存在 `docs/cycle7-microservices-evidence-2026-09-21.md`。
 周期 8 的订单幂等与明细验收保存在 `docs/cycle8-order-idempotency-evidence-2026-09-21.md`。
+周期 9 的超时关单验收保存在 `docs/cycle9-timeout-close-evidence-2026-09-21.md`。
 
 ## 单体 HTTP 入口（8080）
 
@@ -63,12 +65,12 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 
 ## 微服务切片 HTTP 入口（Gateway 18080）
 
-- `POST /api/orders`：持久化订单与商品明细并编排库存预占；商品项包含 `skuId`、`spuId`、`count` 和 `price`。
+- `POST /api/orders`：持久化订单与商品明细并编排库存预占；可传 `timeoutSeconds`，商品项包含 `skuId`、`spuId`、`count` 和 `price`。
 - `GET /api/orders/{orderId}`：查询订单主状态、预占状态和商品明细。
 - `POST /api/payments/callbacks/success`：支付成功回调，必须携带时间戳和 HMAC 签名。
 - `GET /api/inventory/skus/{skuId}`：查询库存。
 
-库存预占、释放和确认只位于服务内部 `/internal/**`，需要 `X-Internal-Service-Token`。该切片尚未提供超时关单、Redis 快速下单、对账、限流和业务看板。
+库存预占、释放和确认只位于服务内部 `/internal/**`，需要 `X-Internal-Service-Token`。该切片尚未提供 Redis 快速下单、对账、限流和业务看板。
 
 ## 单体可观测性
 
