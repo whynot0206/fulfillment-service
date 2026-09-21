@@ -164,3 +164,15 @@ CREATE TABLE IF NOT EXISTS `microservice_order_command` (
   KEY `idx_microservice_order_command_ready` (`status`,`next_retry_time`,`lease_until`,`command_id`),
   KEY `idx_microservice_order_command_reconciliation` (`redis_reserved`,`status`,`command_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='微服务Redis预扣后的持久化订单命令';
+
+-- Inventory 自有的 Redis 预扣事实投影。共享库模式保留此表用于兼容，
+-- 周期 11 物理拆库后该表只存在于 fulfillment_inventory。
+CREATE TABLE IF NOT EXISTS `inventory_redis_reservation` (
+  `order_id` BIGINT NOT NULL,
+  `items_json` TEXT NOT NULL COMMENT '规范化后的库存项目快照',
+  `status` TINYINT NOT NULL COMMENT '1待MySQL落库 2已落库 3已补偿',
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`order_id`),
+  KEY `idx_inventory_redis_reservation_status` (`status`,`order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Inventory Redis预扣事实投影';

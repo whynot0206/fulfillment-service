@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.why.fulfillment.api.inventory.InventoryClient;
 import com.why.fulfillment.api.inventory.InventoryRedisCompensateRequest;
 import com.why.fulfillment.api.inventory.InventoryRedisCompensateResponse;
+import com.why.fulfillment.api.inventory.InventoryRedisMaterializeRequest;
+import com.why.fulfillment.api.inventory.InventoryRedisMaterializeResponse;
 import com.why.fulfillment.api.inventory.InventoryRedisReserveRequest;
 import com.why.fulfillment.api.inventory.InventoryRedisReserveResponse;
 import com.why.fulfillment.api.inventory.InventoryReserveItem;
@@ -87,8 +89,19 @@ public class RedisOrderApplicationService {
                         .map(item -> new OrderApplicationService.OrderItemCommand(
                                 item.skuId(), item.spuId(), item.count(), item.price())).toList()));
         if ("RESERVED".equals(result.state())) {
-            if (!repository.markSucceeded(command.commandId(), leaseOwner)) {
-                throw new IllegalStateException("async command lease was lost");
+            try {
+                InventoryRedisMaterializeResponse materialized = inventoryClient.materializeRedis(
+                        new InventoryRedisMaterializeRequest(command.orderId(), inventoryItems(items)));
+                if (materialized == null || !"MATERIALIZED".equalsIgnoreCase(materialized.status())) {
+                    String error = materialized == null ? "empty materialization response" : materialized.error();
+                    throw new IllegalStateException("Redis reservation projection failed: " + error);
+                }
+                if (!repository.markSucceeded(command.commandId(), leaseOwner)) {
+                    throw new IllegalStateException("async command lease was lost");
+                }
+            } catch (RuntimeException exception) {
+                throw new RedisProjectionPendingException(
+                        "order was persisted; Redis reservation projection is pending", exception);
             }
             return;
         }
@@ -212,4 +225,10 @@ public class RedisOrderApplicationService {
 
     public record RedisOrderResult(long orderId, Long commandId, String state,
                                    String message, boolean replayed) { }
+
+    public static class RedisProjectionPendingException extends RuntimeException {
+        public RedisProjectionPendingException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
 }

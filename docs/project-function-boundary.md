@@ -17,15 +17,15 @@ flowchart LR
     G --> I[Inventory 查询 :18082]
     P --> O
     O --> I
-    O --> DB
-    I --> DB
+    O --> ODB[(MySQL fulfillment_order)]
+    I --> IDB[(MySQL fulfillment_inventory)]
     O --> R[(Redis)]
     I --> R
 ```
 
 - **根目录单体**：周期 0–6 的完整实验与回归基线，覆盖超时关单、Redis 快速下单、异步落库、对账、限流和业务看板。
-- **`microservices` 运行切片**：周期 7–10 持续演进的四进程交易链路，验证 Gateway、Feign、服务间鉴权、Saga 补偿、跨进程 Outbox、订单创建幂等、持久化超时关单和 Redis 快速下单。
-- 两条路径当前共用同一个 MySQL `fulfillment` 库和业务表。联调微服务时必须停止单体，避免两个 Outbox 发布器竞争同一批事件。
+- **`microservices` 运行切片**：周期 7–11 持续演进的四进程交易链路，验证 Gateway、Feign、服务间鉴权、Saga 补偿、跨进程 Outbox、订单创建幂等、持久化超时关单、Redis 快速下单和数据所有权隔离。
+- 根目录单体继续使用 `fulfillment`；微服务 Order 和 Inventory 分别使用 `fulfillment_order`、`fulfillment_inventory`。三个 schema 当前位于同一个 MySQL 实例。
 
 ## 2. 功能矩阵
 
@@ -47,7 +47,7 @@ flowchart LR
 | `order_item` 明细持久化 | 未实现 | 周期 8 已实现，与订单主表同一本地事务 | 微服务已覆盖 |
 | 订单创建请求幂等 | 未实现 | 周期 8 已实现，同载荷重放、异载荷冲突 | 微服务已覆盖 |
 | Nacos 服务发现与配置 | 未实现 | 未实现，使用固定 URL 环境变量 | 后续项 |
-| 独立数据库/schema/账号 | 未实现 | 未实现，共用 MySQL | 后续项 |
+| 独立数据库/schema/账号 | 未实现 | 周期 11 已拆为两个 schema 和最小权限账号 | 已形成数据所有权边界；仍共用 MySQL 实例 |
 
 ## 3. 服务和数据所有权
 
@@ -55,11 +55,11 @@ flowchart LR
 |---|---:|---|---|
 | `gateway` | 18080 | 对外路由 | 不访问数据库 |
 | `order-service` | 18081 | 创建订单、预占状态、支付状态、Outbox、Redis 命令与补偿调度 | `order`、`order_item`、`order_outbox_event`、`microservice_order_command` |
-| `inventory-service` | 18082 | 库存预占、释放、确认、Redis 原子预扣、查询、对账和取消栅栏 | `sku_stock`、`sku_stock_lock`、`inventory_reservation_fence`；对账时只读 `microservice_order_command` |
+| `inventory-service` | 18082 | 库存预占、释放、确认、Redis 原子预扣、查询、对账和取消栅栏 | `sku_stock`、`sku_stock_lock`、`inventory_reservation_fence`、`inventory_redis_reservation` |
 | `payment-service` | 18083 | 校验支付回调并调用 Order | 不访问数据库 |
 | `fulfillment-api` | - | DTO 与 Feign 契约 | 不包含实体或 Mapper |
 
-这已经形成代码、进程和本地事务边界，但还没有形成物理数据库隔离。当前应称为**本地微服务运行切片**，不称为完整生产微服务平台。
+这已经形成代码、进程、本地事务、schema 和账号边界。两个业务 schema 仍部署在同一 MySQL 实例，服务发现、多实例验证和生产运维体系尚未完成，因此当前仍称为**本地微服务运行切片**。
 
 ## 4. 一致性语义
 
@@ -78,7 +78,8 @@ flowchart LR
 - Inventory 使用 `orderId + skuId` 唯一约束、条件状态更新和取消栅栏保证接口幂等并处理释放早于预占的竞态。
 - 支付状态与 Outbox 在 Order 的本地事务中提交，发布器通过 Feign 至少一次调用 Inventory；连续失败 10 次进入死信，当前需要人工排查和恢复。
 - Redis 快速路径先持久化 Order 命令，再由 Inventory Lua 原子预扣；后台租约任务创建 MySQL 订单，失败时用载荷签名和取消墓碑幂等补偿。
-- 对账公式为 `MySQL 可售库存 - READY/PROCESSING 命令的 Redis 预扣量`，当前只输出差异，不自动改数。
+- Inventory 自有账本记录 `PENDING / MATERIALIZED / COMPENSATED`；对账公式为 `MySQL 可售库存 - PENDING 账本预扣量`，不读取 Order 命令表，当前只输出差异，不自动改数。
+- Redis 预扣与 MySQL 账本不是一个事务。账本写入失败时 Order 命令保持可恢复状态，重试 Redis 会命中幂等标记并补写账本。订单已经落库后，账本物化失败只重试投影，禁止走 Redis 回补。
 
 ## 5. 证据等级与可用表述
 
@@ -93,20 +94,21 @@ flowchart LR
 - 周期 8：相同订单载荷重放不重复扣库存，异载荷返回冲突，订单明细完整持久化。
 - 周期 9：2 秒未支付订单约 2.64 秒完成取消和库存释放，支付成功订单不会被到期扫描覆盖。
 - 周期 10：真实 Gateway Redis 下单完成命令持久化、Lua 预扣和异步订单创建；30 秒到期后 MySQL 与 Redis 均恢复到 20，锁记录进入已释放，对账不再报告该 SKU。
+- 周期 11：双 schema 与最小权限账号下，真实 Gateway Redis 下单完成预扣、异步落库和账本物化；3 秒到期后订单、MySQL 库存、Redis 库存和 Inventory 账本全部收敛，目标 SKU 对账无差异。
 
 ### 对外必须带上的限定
 
 - “防超卖”限定为当前原子 SQL 和实测并发条件，不能外推为任意容量下都无问题。
 - “死锁降为 0”限定为本次反向双 SKU 实验，不能描述为彻底消除所有数据库死锁。
-- “微服务主链路已验收”限定为本机四进程、共享 MySQL、固定 URL 的运行切片。
+- “微服务主链路已验收”限定为本机四进程、同一 MySQL 实例内双 schema、固定 URL 的运行切片。
 - “Outbox 可靠投递”应表述为本地事务落库、至少一次投递、幂等消费、有限重试和死信。
 - “安全加固”限定为共享内部令牌、支付 HMAC 和五分钟时间窗；不等于生产身份体系。
-- 周期 10 的 37 项测试覆盖服务层、Controller、Feign 契约、Gateway 路由、Redis 幂等与异步命令状态机；真实跨进程结果来自单机联调记录。
+- 周期 11 的 44 项测试覆盖服务层、Controller、Feign 契约、Gateway 路由、Redis 幂等、Inventory 账本与异步命令状态机；真实跨进程结果来自单机联调记录。
 
 ### 当前不能声称已完成
 
 - 生产级高可用、多实例无重复、零数据丢失或自动容灾。
-- Nacos、负载均衡、灰度发布、Seata、RocketMQ 或物理数据库拆分。
+- Nacos、负载均衡、灰度发布、Seata、RocketMQ 或 MySQL 实例级拆分。
 - TLS、密钥轮换、服务身份、用户鉴权、细粒度授权和防重放存储。
 - 微服务全量 Prometheus/Grafana、分布式追踪、集中日志、告警和 SLO。
 - 微服务容量结论；周期 5 的数据来自单机短时单体路径。
@@ -115,7 +117,7 @@ flowchart LR
 
 ## 6. 里程碑命名
 
-所有当前说明统一使用“周期 0–10”，与规划书顺序对应：
+所有当前说明统一使用“周期 0–11”，与规划书顺序对应：
 
 - **周期 0**：环境与工程骨架。
 - **周期 1**：超卖复现与原子扣减；早期文档曾简称 M0。
@@ -128,6 +130,7 @@ flowchart LR
 - **周期 8**：微服务订单创建幂等与订单明细持久化。
 - **周期 9**：微服务持久化超时关单与库存补偿释放。
 - **周期 10**：微服务 Redis 快速下单、可靠异步落库与库存对账。
+- **周期 11**：Order / Inventory schema、账号与对账数据所有权隔离。
 
 “完成”默认只表示实现、自动化测试和对应验收证据完成；不包含规划书要求的个人面试盘问，也不代表生产就绪。
 
@@ -135,8 +138,8 @@ flowchart LR
 
 建议按以下顺序推进：
 
-1. 为 Order 与 Inventory 划分独立 schema 和账号权限，再验证补偿、迁移和回滚。
-2. 接入服务发现，并补多实例 Outbox、故障注入和微服务可观测性。
+1. 接入服务发现，并补多实例 Outbox、故障注入和微服务可观测性。
+2. 为 Inventory 账本投影增加积压指标、告警与人工恢复入口。
 3. 评估双层令牌桶和业务看板是否迁移，先定义微服务容量与运维验收指标。
 
 ## 8. 证据索引
@@ -149,4 +152,5 @@ flowchart LR
 - `docs/cycle8-order-idempotency-evidence-2026-09-21.md`
 - `docs/cycle9-timeout-close-evidence-2026-09-21.md`
 - `docs/cycle10-redis-microservice-evidence-2026-09-21.md`
+- `docs/cycle11-schema-isolation-evidence-2026-09-21.md`
 - `docs/audit-remediation-2026-09-19.md`

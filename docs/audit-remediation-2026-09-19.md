@@ -90,3 +90,14 @@ JDK、Maven 和 Redis；以下状态以整改后的代码和真实运行结果�
 - 周期 10 后微服务 Reactor 共 37 项测试通过；真实 Gateway 验证预扣、异步落库、到期双存储补偿和一致对账。
 
 证据见 `docs/cycle10-redis-microservice-evidence-2026-09-21.md`。Redis Cluster、多实例租约故障注入、命令表分库后的事件投影、自动修复和微服务容量数据仍未验证。
+
+## 周期 11 补充整改（2026-09-21）
+
+- Order 与 Inventory 分别迁入 `fulfillment_order` 和 `fulfillment_inventory`，并使用只具备自身 schema `SELECT/INSERT/UPDATE` 的应用账号。
+- 实测两个应用账号均无法读取对方 schema，Inventory 对账代码已删除对 `microservice_order_command` 的依赖。
+- 新增 Inventory 自有 Redis 预扣账本和物化接口，对账只聚合 `PENDING` 账本；补偿和物化使用条件状态转换，避免并发状态倒退。
+- 修复 READY/PROCESSING 未知异常走错误 Redis 补偿的问题：只有明确失败终态才补偿；物化失败或无法判断订单是否已形成时持续退避重试，不补偿可能有效的订单。
+- 共享库和拆库迁移均回填 READY/PROCESSING 命令，并把含价格的 Order JSON 规范化为库存字段；脚本连续执行两次成功。
+- 微服务 Reactor 44 项测试和单体 47 项测试通过；真实双 schema 四进程链路完成预扣、异步落库、超时双补偿和目标 SKU 一致对账。
+
+证据见 `docs/cycle11-schema-isolation-evidence-2026-09-21.md`。当前仍共享一个 MySQL 实例；账本积压告警、多实例故障注入、服务发现和分布式追踪尚未完成。

@@ -11,9 +11,12 @@ import com.why.fulfillment.api.inventory.InventoryRedisReserveRequest;
 import com.why.fulfillment.api.inventory.InventoryRedisReserveResponse;
 import com.why.fulfillment.api.inventory.InventoryRedisCompensateRequest;
 import com.why.fulfillment.api.inventory.InventoryRedisCompensateResponse;
+import com.why.fulfillment.api.inventory.InventoryRedisMaterializeRequest;
+import com.why.fulfillment.api.inventory.InventoryRedisMaterializeResponse;
+import com.why.fulfillment.inventory.redis.InventoryRedisLedgerService;
+import com.why.fulfillment.inventory.redis.RedisInventoryCoordinator;
 import com.why.fulfillment.inventory.redis.RedisStockResult;
 import com.why.fulfillment.inventory.redis.RedisStockResultStatus;
-import com.why.fulfillment.inventory.redis.RedisStockService;
 import com.why.fulfillment.inventory.service.InventoryIdempotencyConflictException;
 import com.why.fulfillment.inventory.service.InventoryReservationRejectedException;
 import com.why.fulfillment.inventory.service.InventoryReservationService;
@@ -34,7 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class InventoryController {
 
     private final InventoryReservationService reservationService;
-    private final RedisStockService redisInventoryService;
+    private final RedisInventoryCoordinator redisInventoryService;
 
     public InventoryController(InventoryReservationService reservationService) {
         this(reservationService, null);
@@ -42,7 +45,7 @@ public class InventoryController {
 
     @Autowired
     public InventoryController(InventoryReservationService reservationService,
-                               RedisStockService redisInventoryService) {
+                               RedisInventoryCoordinator redisInventoryService) {
         this.reservationService = reservationService;
         this.redisInventoryService = redisInventoryService;
     }
@@ -131,6 +134,26 @@ public class InventoryController {
         } catch (RuntimeException exception) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(InventoryRedisCompensateResponse.unknown("Redis inventory operation failed"));
+        }
+    }
+
+    @PostMapping("/redis/materialize")
+    public ResponseEntity<InventoryRedisMaterializeResponse> materializeRedis(
+            @RequestBody(required = false) InventoryRedisMaterializeRequest request) {
+        if (request == null || redisInventoryService == null) {
+            return ResponseEntity.badRequest().body(InventoryRedisMaterializeResponse.failed("request is required"));
+        }
+        try {
+            redisInventoryService.materialize(request.orderId(), request.items());
+            return ResponseEntity.ok(InventoryRedisMaterializeResponse.materialized());
+        } catch (InventoryRedisLedgerService.LedgerConflictException
+                 | InventoryRedisLedgerService.LedgerStateException exception) {
+            return ResponseEntity.ok(InventoryRedisMaterializeResponse.conflict(exception.getMessage()));
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.badRequest().body(InventoryRedisMaterializeResponse.failed(exception.getMessage()));
+        } catch (RuntimeException exception) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(InventoryRedisMaterializeResponse.failed("inventory projection failed"));
         }
     }
 

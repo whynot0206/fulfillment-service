@@ -1,0 +1,13 @@
+-- Copy this file outside the repository, replace both placeholder passwords,
+-- then execute it with a MySQL administrator account on the local machine.
+CREATE USER IF NOT EXISTS 'fulfillment_order_app'@'127.0.0.1'
+  IDENTIFIED BY 'replace-with-order-password';
+CREATE USER IF NOT EXISTS 'fulfillment_inventory_app'@'127.0.0.1'
+  IDENTIFIED BY 'replace-with-inventory-password';
+
+GRANT SELECT, INSERT, UPDATE
+  ON `fulfillment_order`.* TO 'fulfillment_order_app'@'127.0.0.1';
+GRANT SELECT, INSERT, UPDATE
+  ON `fulfillment_inventory`.* TO 'fulfillment_inventory_app'@'127.0.0.1';
+
+FLUSH PRIVILEGES;

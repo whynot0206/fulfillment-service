@@ -49,6 +49,8 @@ public class RedisOrderCommandScheduler {
             }
             try {
                 service.processReady(command, leaseOwner);
+            } catch (RedisOrderApplicationService.RedisProjectionPendingException exception) {
+                scheduleProjectionRetry(command, exception);
             } catch (RuntimeException exception) {
                 handlePersistenceFailure(command, exception);
             }
@@ -57,11 +59,13 @@ public class RedisOrderCommandScheduler {
 
     private void handlePersistenceFailure(RedisOrderCommand command, RuntimeException exception) {
         int retry = command.retryCount() + 1;
-        if (retry >= MAX_RETRIES && service.compensate(command)) {
-            repository.markDead(command.commandId(), RedisOrderCommand.PROCESSING, leaseOwner,
-                    "order persistence failed and Redis was compensated: " + safeMessage(exception));
-            return;
-        }
+        repository.scheduleRetry(command.commandId(), leaseOwner, retry,
+                LocalDateTime.now().plusSeconds(Math.min(300, 1L << Math.min(8, retry - 1))),
+                safeMessage(exception));
+    }
+
+    private void scheduleProjectionRetry(RedisOrderCommand command, RuntimeException exception) {
+        int retry = command.retryCount() + 1;
         repository.scheduleRetry(command.commandId(), leaseOwner, retry,
                 LocalDateTime.now().plusSeconds(Math.min(300, 1L << Math.min(8, retry - 1))),
                 safeMessage(exception));

@@ -5,9 +5,9 @@ spring:
   application:
     name: order-service
   datasource:
-    url: ${ORDER_DATASOURCE_URL:jdbc:mysql://localhost:3306/fulfillment?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:}
+    url: ${ORDER_DATASOURCE_URL:jdbc:mysql://localhost:3306/fulfillment_order?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${ORDER_DB_USERNAME:fulfillment_order_app}
+    password: ${ORDER_DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: ${ORDER_DB_POOL_SIZE:10}

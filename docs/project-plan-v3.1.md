@@ -448,7 +448,7 @@ InnoDB 对同一行的更新必须串行：行锁从 `UPDATE` 开始持有，直
 >
 > 技术栈：Java 17、Spring Boot 3、Spring Cloud OpenFeign、Spring Cloud Gateway、MyBatis、MySQL、Redis、Redisson、Micrometer、Prometheus、Grafana、JMeter、Docker
 >
-> 项目简介：参考开源电商平台 mall4cloud 的库存与订单设计，实现聚焦高并发场景的履约实验平台。根目录单体覆盖下单、库存预占、支付回调、超时关单、Redis 快速路径与对账；微服务切片按网关、订单、库存、支付形成独立进程，以 Saga 补偿和本地消息表验证跨进程最终一致语义。当前微服务仍共用 MySQL，并通过静态服务 URL 联调。
+> 项目简介：参考开源电商平台 mall4cloud 的库存与订单设计，实现聚焦高并发场景的履约实验平台。根目录单体覆盖下单、库存预占、支付回调、超时关单、Redis 快速路径与对账；微服务切片按网关、订单、库存、支付形成独立进程，以 Saga 补偿和本地消息表验证跨进程最终一致语义。Order 与 Inventory 使用同一 MySQL 实例内的独立 schema 和最小权限账号，并通过静态服务 URL 联调。
 >
 > 1. **超卖防护**：将库存检查与扣减收敛为单条带条件判断的原子 SQL。连接池上限 20、300 个请求的一次复验中，普通先查后扣超卖 245 件，加本地事务后仍超卖 278 件，原子 SQL 超卖归零。
 > 2. **并发死锁定位与修复**：复现多 SKU 订单并发扣减导致的 InnoDB 死锁，经死锁日志定位为加锁顺序不一致，通过扣减前按 SKU 主键排序统一加锁顺序；本次 40 个未排序事务回滚 20 个，排序后 40 个事务全部成功。
@@ -480,3 +480,15 @@ Inventory Service 负责 Redis 库存键、Lua 脚本、条件补偿和只读对
 已通过 37 项微服务自动化测试。真实四进程验收中，2 件库存完成 Redis 预扣和异步订单落库，30 秒未支付后 MySQL 与 Redis 都从 18 恢复到 20；过程中发现并修复了只读事务执行 `SELECT FOR UPDATE` 导致库存释放失败的问题。
 
 下一阶段优先处理 Order 与 Inventory 独立 schema、事件投影式对账、多实例故障注入和微服务可观测性。双层令牌桶与业务看板尚未迁移。
+
+---
+
+## 十四、追加周期 11：数据所有权与 schema 隔离
+
+Order 与 Inventory 已迁入同一 MySQL 实例中的 `fulfillment_order`、`fulfillment_inventory`，并分别使用只具备自身 schema `SELECT/INSERT/UPDATE` 权限的应用账号。Inventory 跨 schema 读取 Order 命令表的权限已移除，账号级验证确认双向越权查询均被拒绝。
+
+Inventory 新增自有 `inventory_redis_reservation` 账本，记录 Redis 预扣的 `PENDING / MATERIALIZED / COMPENSATED` 状态。对账只读取 Inventory 的库存表、账本与 Redis。Order 的 MySQL 落库完成后幂等调用物化接口；物化失败只重试投影，不会补偿已经对应有效订单的 Redis 库存。
+
+迁移脚本支持停机复制与重复执行，并将旧命令中含价格的商品 JSON 规范化为库存字段。周期 11 已通过 44 项微服务自动化测试和 47 项单体回归；真实四进程、双 schema、最小权限账号验收完成 202 接受、异步落库、3 秒超时关单、MySQL/Redis 双补偿和目标 SKU 一致对账。
+
+下一阶段优先接入服务发现、多实例故障注入和微服务可观测性，并为账本投影增加积压指标、告警和人工恢复入口。

@@ -2,7 +2,7 @@
 
 ## 当前实现状态
 
-仓库包含两条运行路径：根目录单体是周期 0–6 的完整实验与回归基线；`microservices` 是周期 7–10 持续演进的跨进程交易切片。两者的功能覆盖不同，统一边界见 [`docs/project-function-boundary.md`](docs/project-function-boundary.md)。
+仓库包含两条运行路径：根目录单体是周期 0–6 的完整实验与回归基线；`microservices` 是周期 7–11 持续演进的跨进程交易切片。两者的功能覆盖不同，统一边界见 [`docs/project-function-boundary.md`](docs/project-function-boundary.md)。
 
 - 周期 1（旧文档简称 M0）：已完成并实测。连接池上限 20、300 个请求的一次复验中，普通先查后扣超卖 245 件，加本地事务后仍超卖 278 件，原子 SQL 超卖 0 件。
 - 周期 2（旧文档简称 M1）：已完成真实 Redis 端到端验收。2 秒超时订单自动取消，预占的 3 件库存完整释放，可售库存恢复且锁定库存归零。
@@ -15,6 +15,7 @@
 - 周期 8：微服务订单创建增加请求幂等和 `order_item` 明细持久化。同一 `orderId` 与相同载荷安全重放，载荷不同返回 409；真实 Gateway 验收确认重复请求不重复扣库存。微服务 Reactor 共 26 项测试通过。
 - 周期 9：微服务 Order 增加持久化超时关单。到期扫描通过条件更新与支付竞争，关单后复用库存补偿任务；2 秒真实验收约 2.64 秒完成取消和库存释放，支付成功订单超过期限后保持 `PAID`。微服务 Reactor 共 28 项测试通过。
 - 周期 10：将 Redis Lua 多 SKU 预扣、可靠异步订单落库和只读库存对账迁入微服务切片。Order 先持久化命令再调用 Inventory，失败重试用租约抢占；取消墓碑阻止结果未知时的晚到预扣。超时关单同时补偿 MySQL 与 Redis，微服务 Reactor 共 37 项测试通过。
+- 周期 11：Order 与 Inventory 分别迁入 `fulfillment_order`、`fulfillment_inventory` schema 和最小权限账号。Inventory 用自有 Redis 预扣账本替代对 Order 命令表的直接读取，真实四进程链路完成预扣、异步落库、3 秒超时和双存储补偿；微服务 Reactor 共 44 项测试通过。
 
 周期 2 的核心边界是：订单与库存预占在本地事务中提交，订单提交后才投递延迟任务；关单只允许把待支付订单改为已取消，随后幂等释放锁定库存。
 
@@ -27,13 +28,13 @@
 
 根目录应用运行在 8080，保留周期 0–6 的完整实验能力。`microservices` 目录的 Gateway、Order、Inventory 和 Payment 分别独立启动，用于验证真实 HTTP 边界、Saga 补偿和跨进程 Outbox。
 
-微服务切片当前仍与单体共用 `fulfillment` 数据库和表。联调微服务时应停止单体，避免两个 Outbox 发布器同时消费 `order_outbox_event`。微服务启动和安全参数见 [`microservices/README.md`](microservices/README.md)。
+微服务切片使用同一 MySQL 实例中的两个独立 schema 和两个最小权限账号；根目录单体继续使用旧 `fulfillment` 库作为回归基线。微服务启动、迁移和安全参数见 [`microservices/README.md`](microservices/README.md)。
 
 `NOTES-对照记录.md` 保留了每个周期与 mall4cloud 的差异记录，后续周期继续在这里补充真实实验结论。
 
 ## 跑起来的顺序
 
-当前使用本机 `MySQL80` 服务和 `fulfillment` 数据库。新环境可执行 `sql/schema.sql` 初始化；升级已有数据库时按周期执行 `microservices/sql/migration-cycle7.sql` 至 `migration-cycle10.sql`。若使用 Docker，再运行 `docker compose up -d`。
+当前使用本机 `MySQL80` 服务。单体新环境可执行 `sql/schema.sql` 初始化；微服务升级时先完成周期 7–10 迁移，再执行 `microservices/sql/migration-cycle11.sql` 和 `migration-cycle11-split-schema.sql`，最后按示例创建最小权限账号。若使用 Docker，再运行 `docker compose up -d`。
 
 启动应用或运行测试前，通过环境变量提供数据库密码：PowerShell 使用
 `$env:MYSQL_PASSWORD = '<你的本地密码>'`。Docker Compose 请先复制 `.env.example`
@@ -51,6 +52,7 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 周期 8 的订单幂等与明细验收保存在 `docs/cycle8-order-idempotency-evidence-2026-09-21.md`。
 周期 9 的超时关单验收保存在 `docs/cycle9-timeout-close-evidence-2026-09-21.md`。
 周期 10 的 Redis 快速下单、超时补偿和对账验收保存在 `docs/cycle10-redis-microservice-evidence-2026-09-21.md`。
+周期 11 的数据库隔离、权限验证和双库存补偿验收保存在 `docs/cycle11-schema-isolation-evidence-2026-09-21.md`。
 
 ## 单体 HTTP 入口（8080）
 

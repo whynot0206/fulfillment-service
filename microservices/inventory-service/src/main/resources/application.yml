@@ -2,9 +2,9 @@ spring:
   application:
     name: inventory-service
   datasource:
-    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/fulfillment?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
-    username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:}
+    url: ${INVENTORY_DATASOURCE_URL:jdbc:mysql://localhost:3306/fulfillment_inventory?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${INVENTORY_DB_USERNAME:fulfillment_inventory_app}
+    password: ${INVENTORY_DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:

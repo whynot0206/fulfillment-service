@@ -2,6 +2,7 @@ package com.why.fulfillment.order.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.why.fulfillment.api.inventory.InventoryClient;
+import com.why.fulfillment.api.inventory.InventoryRedisMaterializeResponse;
 import com.why.fulfillment.order.domain.RedisOrderCommand;
 import com.why.fulfillment.order.repository.RedisOrderCommandRepository;
 import org.junit.jupiter.api.Test;
@@ -58,6 +59,22 @@ class RedisOrderApplicationServiceTest {
 
         assertEquals("CONFLICT", result.state());
         verify(inventory, never()).reserveRedis(any());
+    }
+
+    @Test
+    void marksCommandSucceededOnlyAfterRedisReservationIsMaterialized() {
+        RedisOrderCommand command = stored(1L, 10L, 20L, 2, RedisOrderCommand.PROCESSING);
+        when(orders.createPending(any())).thenReturn(
+                new OrderApplicationService.CreateOrderResult(10L, "RESERVED", "inventory reserved", false));
+        when(inventory.materializeRedis(any())).thenReturn(InventoryRedisMaterializeResponse.materialized());
+        when(repository.markSucceeded(1L, "worker-1")).thenReturn(true);
+
+        service.processReady(command, "worker-1");
+
+        var order = inOrder(orders, inventory, repository);
+        order.verify(orders).createPending(any());
+        order.verify(inventory).materializeRedis(any());
+        order.verify(repository).markSucceeded(1L, "worker-1");
     }
 
     private static RedisOrderApplicationService.CreateRedisOrderCommand request(long orderId, int count) {

@@ -5,8 +5,8 @@
 
 当前能力矩阵和对外口径见 [`../docs/project-function-boundary.md`](../docs/project-function-boundary.md)。这里的“微服务”特指本机四进程运行切片，不代表全部单体能力已迁移或已经达到生产部署标准。
 
-单体与微服务切片当前共用数据库表。联调微服务时请停止根目录单体，避免两个 Outbox 发布器同时消费
-`order_outbox_event`；这也是后续物理拆分 schema 前必须遵守的运行约束。
+周期 11 后，Order 和 Inventory 使用同一 MySQL 实例中的独立 schema 与应用账号。根目录单体仍连接旧
+`fulfillment` 库作为回归基线；它不再与微服务切片竞争同一批 Order Outbox 数据。
 
 ## 服务与端口
 
@@ -42,7 +42,8 @@
 ## 本地构建
 
 ```powershell
-$env:MYSQL_PASSWORD = '<本机 MySQL 密码>'
+$env:ORDER_DB_PASSWORD = '<Order 应用账号密码>'
+$env:INVENTORY_DB_PASSWORD = '<Inventory 应用账号密码>'
 $env:INTERNAL_SERVICE_TOKEN = '<订单、库存和支付服务共用的内部调用令牌>'
 $env:PAYMENT_CALLBACK_SECRET = '<支付回调 HMAC 密钥>'
 & 'D:\vibecoding\.toolchains\maven\apache-maven-3.9.16\bin\mvn.cmd' `
@@ -50,7 +51,19 @@ $env:PAYMENT_CALLBACK_SECRET = '<支付回调 HMAC 密钥>'
   -f .\microservices\pom.xml test
 ```
 
-首次运行前依次执行 `sql/migration-cycle7.sql` 至 `sql/migration-cycle10.sql`。各服务通过环境变量配置依赖地址，默认指向上表中的本机端口。
+首次运行前依次执行 `sql/migration-cycle7.sql` 至 `sql/migration-cycle11.sql`，随后用管理账号执行
+`sql/migration-cycle11-split-schema.sql`。参考 `sql/provision-cycle11-users.sql.example` 创建应用账号，真实密码只通过环境变量提供：
+
+```text
+ORDER_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/fulfillment_order
+ORDER_DB_USERNAME=fulfillment_order_app
+ORDER_DB_PASSWORD=...
+INVENTORY_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/fulfillment_inventory
+INVENTORY_DB_USERNAME=fulfillment_inventory_app
+INVENTORY_DB_PASSWORD=...
+```
+
+拆分脚本是停机复制脚本：使用 `INSERT IGNORE` 支持重跑，但不会覆盖目标 schema 已推进的数据。各服务通过环境变量配置依赖地址，默认指向上表中的本机端口。
 当前阶段先用明确的服务 URL 验证网络和补偿语义；服务注册中心在这个运行切片通过测试后接入。
 
 支付回调必须携带 `X-Payment-Timestamp`（Unix 秒）和 `X-Payment-Signature`。签名原文为
@@ -87,13 +100,13 @@ Order Service 持久化 `timeout_seconds` 和 `expire_time`。扫描器只领取
 
 对于连接中断等结果未知场景，Order Service 会请求强制补偿。Inventory Service 即使尚未看到预扣，也会写入同一订单和载荷的取消墓碑；晚到预扣会被拒绝，避免补偿先到、预扣后到造成库存泄漏。普通超时关单只执行条件补偿，不会为从未走过 Redis 路径的订单制造墓碑。
 
-`GET /api/inventory/reconciliation` 根据 `MySQL 可售库存 - 尚未落库的 Redis 预扣量` 计算期望 Redis 值，只报告缺失和差异，不自动修复。当前 Inventory Service 为此只读访问共享库中的命令表，这是共享数据库阶段的明确折中；数据库物理拆分后应改为事件投影或独立对账数据源。
+`GET /api/inventory/reconciliation` 根据 `MySQL 可售库存 - Inventory 账本中 PENDING 预扣量` 计算期望 Redis 值，只报告缺失和差异，不自动修复。Redis 预扣成功后先写 Inventory 自有账本；Order 的 MySQL 订单与锁定库存落库后，再幂等物化为 `MATERIALIZED`。投影调用失败只重试账本，不会回补已经形成有效订单的 Redis 库存。
 
 ## 当前功能边界
 
 - 已迁移：订单主状态与明细、订单创建幂等、超时关单、库存预占/释放/确认、支付回调、订单 Outbox、取消栅栏、故障补偿、Redis 快速下单、异步落库和只读库存对账。
 - 尚未迁入本切片：双层令牌桶和业务看板。
-- Order 与 Inventory 仍连接同一个 MySQL `fulfillment` 库；代码和本地事务已分进程，数据库尚未物理拆分。
+- Order 只访问 `fulfillment_order`，Inventory 只访问 `fulfillment_inventory`；两个最小权限账号的跨 schema 查询均被拒绝。当前仍是同一 MySQL 实例，不代表实例级故障隔离。
 - 服务地址通过环境变量配置的静态 URL 提供，尚未接入 Nacos。
-- 周期 10 后 Reactor 共 37 项自动化测试，覆盖服务逻辑、金额精度、到期任务竞争、Redis 幂等与取消墓碑、异步命令状态机、Controller、Feign 契约和 Gateway 路由；跨进程主链路结果来自本机联调记录。
+- 周期 11 后 Reactor 共 44 项自动化测试，覆盖服务逻辑、金额精度、到期任务竞争、Redis 幂等与取消墓碑、Inventory 预扣账本、异步命令状态机、Controller、Feign 契约和 Gateway 路由；跨进程双 schema 主链路结果来自本机联调记录。
 - 内部共享令牌和支付 HMAC 是本地切片的基础请求校验，不等同于 TLS、服务身份、密钥轮换和细粒度授权。
