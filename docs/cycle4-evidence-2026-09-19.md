@@ -17,7 +17,7 @@ powershell -ExecutionPolicy Bypass -File .\run-tests.ps1
 
 完整结果：14 个测试通过，0 失败，0 错误，Maven `BUILD SUCCESS`。
 
-## M0：超卖与原子扣减
+## 周期 1：超卖与原子扣减
 
 同一套 300 线程、初始库存 100、每单 1 件的测试结果：
 

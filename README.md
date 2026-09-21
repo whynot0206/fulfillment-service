@@ -2,27 +2,29 @@
 
 ## 当前实现状态
 
-- M0：已完成并实测。连接池上限 20、300 个请求的一次复验中，普通先查后扣超卖 245 件，加本地事务后仍超卖 278 件，原子 SQL 超卖 0 件。
-- M1：已完成真实 Redis 端到端验收。2 秒超时订单自动取消，预占的 3 件库存完整释放，可售库存恢复且锁定库存归零。
-- 周期 3：已完成支付回调幂等、本地消息表、抢占发布、失败退避和库存确认消费。依据规划书的退出条件，当前保留单模块服务边界，Nacos、OpenFeign 和 Gateway 延后到确有部署需求时再拆。
+仓库包含两条运行路径：根目录单体是周期 0–6 的完整实验与回归基线；`microservices` 是周期 7 的跨进程交易切片。两者的功能覆盖不同，统一边界见 [`docs/project-function-boundary.md`](docs/project-function-boundary.md)。
+
+- 周期 1（旧文档简称 M0）：已完成并实测。连接池上限 20、300 个请求的一次复验中，普通先查后扣超卖 245 件，加本地事务后仍超卖 278 件，原子 SQL 超卖 0 件。
+- 周期 2（旧文档简称 M1）：已完成真实 Redis 端到端验收。2 秒超时订单自动取消，预占的 3 件库存完整释放，可售库存恢复且锁定库存归零。
+- 周期 3：已完成单体内的支付回调幂等、本地消息表、抢占发布、失败退避和库存确认消费。这里验证的是业务包边界和本地事务语义，不是独立服务部署。
 - 项目本地工具链已安装 Temurin JDK 17.0.20.1 和 Maven 3.9.16；MySQL 8.0.46、`fulfillment` 测试库和本机 Redis 服务均已就绪。
 - 周期 4：已完成真实 MySQL 对照。未排序基线 40 个事务中死锁回滚 20 个，死锁率 50%；按 `skuId` 排序后 40 个事务全部成功，死锁率 0%。
 - 周期 5：已完成 Redis Lua 多 SKU 原子预扣与幂等补偿、持久化命令异步落库、库存对账、双层令牌桶和 JMeter 三轮对比。全量 46 个测试通过。
 - 周期 6：已完成 Actuator、Prometheus 指标、Grafana 预置面板和应用内运行看板；Docker 实测 Prometheus 采集目标为 `UP`，Grafana 数据源和 `Fulfillment` 看板可自动加载。当前全量 47 个测试通过。
-- 周期 7：新增 `microservices` 独立运行切片，包含 API 契约、库存、订单、支付和 Gateway 五个 Maven 模块；跨服务下单采用显式预占状态与补偿任务，支付通过订单本地 Outbox 可靠确认库存。根目录单体继续作为 M0-M6 回归基线。
+- 周期 7：新增 `microservices` 运行切片，包含 Gateway、Order、Inventory、Payment 四个独立进程和一个 DTO/Feign 契约模块；在本机、共享 MySQL、静态服务 URL 条件下验证了下单预占、支付、Outbox 确认和故障补偿。超时关单、Redis 快速下单、对账、限流和业务看板尚未迁移到该切片。
 
-M1 的核心边界是：订单与库存预占在本地事务中提交，订单提交后才投递延迟任务；关单只允许把待支付订单改为已取消，随后幂等释放锁定库存。
+周期 2 的核心边界是：订单与库存预占在本地事务中提交，订单提交后才投递延迟任务；关单只允许把待支付订单改为已取消，随后幂等释放锁定库存。
 
 周期 3 的消息边界是：支付状态更新和 `PAYMENT_CONFIRMED` 事件在同一数据库事务内落库；发布器提供至少一次投递，库存确认按锁定记录状态条件更新保证重复消费不重复扣库存。增量表结构见 `sql/migration-cycle3.sql`。
 
-> 完整方案见 `D:\vibecoding\履约中台-项目规划书.md`
-> 当前工程仍是单模块实现，但包边界已经按后续 inventory、order、payment 服务划分。
+> 完整方案见 [`docs/project-plan-v3.1.md`](docs/project-plan-v3.1.md)；工作区源文件位于 `D:\vibecoding\履约中台-项目规划书.md`。
+> 当前实现与对外口径以 [`docs/project-function-boundary.md`](docs/project-function-boundary.md) 为准。
 
-## 这个目录里，哪些是搭好的，哪些是你的
+## 两条运行路径
 
-当前目录已经包含库存原子扣减、库存预占与释放、超时关单、支付回调、本地消息表和库存确认消费的实现，以及对应的单元测试。
+根目录应用运行在 8080，保留周期 0–6 的完整实验能力。`microservices` 目录的 Gateway、Order、Inventory 和 Payment 分别独立启动，用于验证真实 HTTP 边界、Saga 补偿和跨进程 Outbox。
 
-包名是 `inventory` 不是 `stock`，因为周期 3 拆出来的服务叫 `inventory-service`——从现在就按未来的服务边界分包，拆分时直接把包提出来变模块即可。后面写订单和支付逻辑同理，放进 `.order` 和 `.payment`，跨包不要直接调对方的 service 实现类。
+微服务切片当前仍与单体共用 `fulfillment` 数据库和表。联调微服务时应停止单体，避免两个 Outbox 发布器同时消费 `order_outbox_event`。微服务启动和安全参数见 [`microservices/README.md`](microservices/README.md)。
 
 `NOTES-对照记录.md` 保留了每个周期与 mall4cloud 的差异记录，后续周期继续在这里补充真实实验结论。
 
@@ -44,7 +46,7 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 周期 6 的可观测性验收保存在 `docs/cycle6-observability-2026-09-19.md`。
 周期 7 的多进程主链路与故障补偿验收保存在 `docs/cycle7-microservices-evidence-2026-09-21.md`。
 
-## 本地 HTTP 入口
+## 单体 HTTP 入口（8080）
 
 - `POST /api/orders`：创建待支付订单并预占多 SKU 库存，可传 `timeoutSeconds`。
 - `POST /api/payments/callbacks/success`：接收支付成功回调，同一订单与交易号重复提交按幂等成功处理。
@@ -55,9 +57,18 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 - `/dashboard.html`：本地运行看板页面。
 - `/actuator/prometheus`：Prometheus 指标端点。
 
-这些入口用于本地联调；周期 5 的 JMeter 计划和运行脚本在 `performance` 目录。
+这些入口属于根目录单体。周期 5 的 JMeter 计划和运行脚本在 `performance` 目录。
 
-## 可观测性
+## 微服务切片 HTTP 入口（Gateway 18080）
+
+- `POST /api/orders`：创建订单主记录并编排库存预占。
+- `GET /api/orders/{orderId}`：查询订单主状态与预占状态。
+- `POST /api/payments/callbacks/success`：支付成功回调，必须携带时间戳和 HMAC 签名。
+- `GET /api/inventory/skus/{skuId}`：查询库存。
+
+库存预占、释放和确认只位于服务内部 `/internal/**`，需要 `X-Internal-Service-Token`。该切片尚未提供超时关单、Redis 快速下单、对账、限流和业务看板。
+
+## 单体可观测性
 
 直接启动应用后访问 `http://localhost:8080/dashboard.html` 查看轻量运行看板。需要长期趋势时，
 在 `.env` 中配置 `MYSQL_ROOT_PASSWORD` 和 `GRAFANA_ADMIN_PASSWORD`。如果 MySQL、Redis 已在
@@ -98,4 +109,4 @@ mall4cloud 的写法：
 
 方案文档第四节写了让数字站得住的五个要求，第 5 周正式压测前回去再读一遍。
 
-M0 这两个数字是正确性数字（超卖件数），不是性能数字（QPS）；性能数字等周期 5 的 JMeter 压测。
+周期 1 的这些数字是正确性数字（超卖件数），不是性能数字（QPS）；性能数字见周期 5 的 JMeter 压测。
