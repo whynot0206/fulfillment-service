@@ -1,0 +1,36 @@
+server:
+  port: ${PAYMENT_SERVICE_PORT:18083}
+
+spring:
+  application:
+    name: payment-service
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 1000
+            readTimeout: 3000
+
+order:
+  service:
+    url: ${ORDER_SERVICE_URL:http://localhost:18081}
+
+internal:
+  service:
+    token: ${INTERNAL_SERVICE_TOKEN:}
+
+payment:
+  callback:
+    secret: ${PAYMENT_CALLBACK_SECRET:}
+    max-skew-seconds: ${PAYMENT_CALLBACK_MAX_SKEW_SECONDS:300}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+logging:
+  level:
+    com.why.fulfillment.payment: INFO

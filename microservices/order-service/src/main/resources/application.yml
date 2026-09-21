@@ -1,0 +1,39 @@
+server:
+  port: ${ORDER_SERVICE_PORT:18081}
+
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: ${ORDER_DATASOURCE_URL:jdbc:mysql://localhost:3306/fulfillment?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${ORDER_DB_POOL_SIZE:10}
+      connection-timeout: 3000
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 1000
+            readTimeout: 3000
+
+inventory:
+  service:
+    url: ${INVENTORY_SERVICE_URL:http://localhost:18082}
+
+internal:
+  service:
+    token: ${INTERNAL_SERVICE_TOKEN:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+logging:
+  level:
+    com.why.fulfillment.order: INFO

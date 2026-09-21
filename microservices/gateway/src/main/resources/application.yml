@@ -1,0 +1,35 @@
+server:
+  port: ${GATEWAY_PORT:18080}
+
+spring:
+  application:
+    name: fulfillment-gateway
+  main:
+    web-application-type: reactive
+  cloud:
+    gateway:
+      routes:
+        - id: order-service
+          uri: ${gateway.services.order-url:http://localhost:18081}
+          predicates:
+            - Path=/api/orders/**
+        - id: payment-service
+          uri: ${gateway.services.payment-url:http://localhost:18083}
+          predicates:
+            - Path=/api/payments/**
+        - id: inventory-service
+          uri: ${gateway.services.inventory-url:http://localhost:18082}
+          predicates:
+            - Path=/api/inventory/**
+
+gateway:
+  services:
+    order-url: ${ORDER_SERVICE_URL:http://localhost:18081}
+    payment-url: ${PAYMENT_SERVICE_URL:http://localhost:18083}
+    inventory-url: ${INVENTORY_SERVICE_URL:http://localhost:18082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,gateway

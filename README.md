@@ -9,6 +9,7 @@
 - 周期 4：已完成真实 MySQL 对照。未排序基线 40 个事务中死锁回滚 20 个，死锁率 50%；按 `skuId` 排序后 40 个事务全部成功，死锁率 0%。
 - 周期 5：已完成 Redis Lua 多 SKU 原子预扣与幂等补偿、持久化命令异步落库、库存对账、双层令牌桶和 JMeter 三轮对比。全量 46 个测试通过。
 - 周期 6：已完成 Actuator、Prometheus 指标、Grafana 预置面板和应用内运行看板；Docker 实测 Prometheus 采集目标为 `UP`，Grafana 数据源和 `Fulfillment` 看板可自动加载。当前全量 47 个测试通过。
+- 周期 7：新增 `microservices` 独立运行切片，包含 API 契约、库存、订单、支付和 Gateway 五个 Maven 模块；跨服务下单采用显式预占状态与补偿任务，支付通过订单本地 Outbox 可靠确认库存。根目录单体继续作为 M0-M6 回归基线。
 
 M1 的核心边界是：订单与库存预占在本地事务中提交，订单提交后才投递延迟任务；关单只允许把待支付订单改为已取消，随后幂等释放锁定库存。
 
@@ -41,6 +42,7 @@ M1 的核心边界是：订单与库存预占在本地事务中提交，订单�
 Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`。
 周期 5 的环境、三轮数据和语义边界保存在 `docs/cycle5-evidence-2026-09-19.md`。
 周期 6 的可观测性验收保存在 `docs/cycle6-observability-2026-09-19.md`。
+周期 7 的多进程主链路与故障补偿验收保存在 `docs/cycle7-microservices-evidence-2026-09-21.md`。
 
 ## 本地 HTTP 入口
 
