@@ -3,6 +3,8 @@ package com.why.fulfillment.api.order;
 import com.why.fulfillment.api.InternalFeignAuthConfiguration;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 
 /**
@@ -18,6 +20,9 @@ public interface OrderClient {
 
     @PostMapping("/internal/orders/mark-paid")
     OrderMarkPaidResponse markPaid(@RequestBody OrderMarkPaidRequest request);
+
+    @GetMapping("/internal/orders/{orderId}/payment-view")
+    OrderPaymentView paymentView(@PathVariable("orderId") long orderId);
 
     /**
      * Creates an order with a checkout price snapshot.

@@ -104,6 +104,23 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.orders[0].orderId").value(10));
     }
 
+    @Test
+    void cancelMapsOwnershipAndPaymentConflict() throws Exception {
+        when(service.cancelOwned(10L, 20L)).thenReturn(
+                new OrderApplicationService.CancelOrderResult(10L, "CANCELED"));
+        when(service.cancelOwned(10L, 21L)).thenReturn(
+                new OrderApplicationService.CancelOrderResult(10L, "NOT_FOUND"));
+        when(service.cancelOwned(11L, 20L)).thenReturn(
+                new OrderApplicationService.CancelOrderResult(11L, "CONFLICT"));
+
+        mvc.perform(post("/api/orders/10/cancel").header("X-User-Id", "20"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.state").value("CANCELED"));
+        mvc.perform(post("/api/orders/10/cancel").header("X-User-Id", "21"))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/orders/11/cancel").header("X-User-Id", "20"))
+                .andExpect(status().isConflict());
+    }
+
     private static OrderRecord order(long userId) {
         return new OrderRecord(10L, userId, new BigDecimal("10.00"), 1800L,
                 OrderStatus.PENDING_PAYMENT, ReservationStatus.RESERVED, null, null, null, null,

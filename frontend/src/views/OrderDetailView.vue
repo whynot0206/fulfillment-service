@@ -9,6 +9,40 @@ const route = useRoute()
 const loading = ref(true)
 const error = ref('')
 const order = ref(null)
+const canceling = ref(false)
+const paying = ref(false)
+
+async function pay() {
+  if (!order.value || paying.value) return
+  const orderId = order.value.orderId
+  paying.value = true
+  error.value = ''
+  try {
+    await api.mockPay(orderId)
+    await load(orderId)
+  } catch (caught) {
+    await load(orderId)
+    error.value = caught.status === 409 ? '订单状态已变化，请刷新查看' : caught.message
+  } finally {
+    paying.value = false
+  }
+}
+
+async function cancel() {
+  if (!order.value || canceling.value) return
+  const orderId = order.value.orderId
+  canceling.value = true
+  error.value = ''
+  try {
+    await api.cancelOrder(orderId)
+    await load(orderId)
+  } catch (caught) {
+    await load(orderId)
+    error.value = caught.status === 409 ? '订单状态已变化，请刷新查看' : caught.message
+  } finally {
+    canceling.value = false
+  }
+}
 
 async function load(orderId) {
   loading.value = true
@@ -81,6 +115,16 @@ watch(() => route.params.orderId, (orderId) => orderId && load(orderId), { immed
       </div>
     </div>
 
+    <div v-if="order.status === 'PENDING_PAYMENT'" class="row" style="margin: 16px 0">
+      <button v-if="order.reservationStatus === 'RESERVED'" type="button" :disabled="paying || canceling" @click="pay">
+        {{ paying ? '支付中…' : '模拟支付' }}
+      </button>
+      <button type="button" :disabled="canceling" @click="cancel">
+        {{ canceling ? '取消中…' : '取消订单' }}
+      </button>
+    </div>
+    <div v-if="error" class="banner error">{{ error }}</div>
+
     <h2 class="page-title" style="font-size: 17px">商品明细</h2>
 
     <div class="card" style="padding: 0; overflow: hidden">
@@ -118,10 +162,7 @@ watch(() => route.params.orderId, (orderId) => orderId && load(orderId), { immed
       订单记录的是当时达成的那笔交易，不是商品表的当前值。
     </p>
 
-    <p class="muted">
-      MVP 没有做支付页。支付回调走的是 payment-service 的
-      <code>/api/payments/callbacks/**</code>，可以用接口直接模拟。
-    </p>
+    <p class="muted">“模拟支付”只用于本地演示交易闭环，不会产生真实扣款。</p>
   </template>
 
   <div v-else class="empty">

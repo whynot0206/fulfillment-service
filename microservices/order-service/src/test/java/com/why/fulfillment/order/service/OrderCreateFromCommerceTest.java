@@ -46,6 +46,7 @@ class OrderCreateFromCommerceTest {
     @Test
     void snapshotIsPersistedWithTheOrderLine() {
         when(inventory.reserve(any())).thenReturn(InventoryReserveResponse.reserved());
+        when(repository.updateReservation(10L, ReservationStatus.RESERVED, null)).thenReturn(true);
 
         service.createFromCommerce(request(new BigDecimal("10.00"), "机械键盘"));
 
@@ -73,6 +74,7 @@ class OrderCreateFromCommerceTest {
                         "机械键盘", "{\"色\":\"黑\"}")));
         when(repository.find(10L)).thenReturn(Optional.of(stored));
         when(inventory.reserve(any())).thenReturn(InventoryReserveResponse.reserved());
+        when(repository.updateReservation(10L, ReservationStatus.RESERVED, null)).thenReturn(true);
 
         OrderApplicationService.CreateOrderResult result =
                 service.createFromCommerce(request(new BigDecimal("10.00"), "机械键盘（2026 新款）"));
@@ -112,6 +114,7 @@ class OrderCreateFromCommerceTest {
     @Test
     void trailingZeroesDoNotMakeTheTotalWrong() {
         when(inventory.reserve(any())).thenReturn(InventoryReserveResponse.reserved());
+        when(repository.updateReservation(10L, ReservationStatus.RESERVED, null)).thenReturn(true);
 
         OrderApplicationService.CreateOrderResult result =
                 service.createFromCommerce(request(new BigDecimal("10.0"), "机械键盘"));

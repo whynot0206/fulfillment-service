@@ -25,11 +25,9 @@ import java.util.List;
  * JWTs itself — it has no user table and no signing key, and giving it one would mean two
  * places to rotate the secret.</p>
  *
- * <p><b>The gap this does not close.</b> Port 18081 is still reachable directly, and anything
- * that can reach it can send whatever {@code X-User-Id} it likes. The header is only
- * trustworthy because the gateway is the only reachable door — that is a deployment property,
- * not something this class enforces. Closing it properly means binding 18081 to an internal
- * interface, or extending the internal-token requirement to {@code /api/**} as well.</p>
+ * <p>Direct requests to {@code /api/orders/**} also require the internal service token.
+ * Gateway replaces client-supplied copies with its configured token. Production deployment
+ * should additionally keep service ports on an internal network.</p>
  *
  * <p>{@code POST /api/orders} deliberately keeps taking {@code userId} in the body and is left
  * exactly as it was: it is the entry point the JMeter plan measures, and changing its request
@@ -88,6 +86,18 @@ public class OrderController {
                                             @PathVariable long orderId) {
         return service.findOwned(orderId, userId).map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/{orderId}/cancel")
+    public ResponseEntity<OrderApplicationService.CancelOrderResult> cancel(
+            @RequestHeader(USER_ID_HEADER) long userId, @PathVariable long orderId) {
+        OrderApplicationService.CancelOrderResult result = service.cancelOwned(orderId, userId);
+        HttpStatus status = switch (result.state()) {
+            case "NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "CONFLICT" -> HttpStatus.CONFLICT;
+            default -> HttpStatus.OK;
+        };
+        return ResponseEntity.status(status).body(result);
     }
 
     public record CreateOrderRequest(long orderId, long userId, BigDecimal totalAmount, Long timeoutSeconds,

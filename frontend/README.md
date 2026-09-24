@@ -43,7 +43,7 @@ src/
 | `/products/:spuId` | 商品详情：选规格、加购物车 | 加购时要 |
 | `/cart` | 购物车：改数量、勾选、结算 | 是 |
 | `/orders` | 我的订单 | 是 |
-| `/orders/:orderId` | 订单详情：状态、预占状态、商品快照 | 是 |
+| `/orders/:orderId` | 订单详情：商品快照、主动取消、模拟支付 | 是 |
 | `/login` | 登录 / 注册 | — |
 
 ## 四件想清楚了才写的事
@@ -77,10 +77,10 @@ src/
   这是把后端的不一致转嫁给前端，正确的修法是在 Gateway 或 order-service 统一。
 - **两套分页约定。** 商品列表 page 从 1 开始，订单列表从 0 开始。
   差异挡在 `api/index.js`，但它是一个真实的接口缺陷。
-- **没有支付页。** 支付回调走 payment-service 的 `/api/payments/callbacks/**`，
-  目前只能用接口模拟。
+- **支付仅为本地模拟。** 订单详情的“模拟支付”调用 Payment Service，不产生真实扣款；
+  第三方回调仍走带 HMAC 的 `/api/payments/callbacks/**`。
 
 ## 结算链路
 
-商品浏览、注册登录、加购物车、结算、同键重放、订单查询和模拟支付回调已通过本机 HTTP 冒烟。
-详见 `../docs/mvp-v2-test-evidence-2026-09-24.md`。
+商品浏览、注册登录、加购物车、结算、同键重放、订单查询、主动取消和模拟支付已通过本机 HTTP 冒烟。
+详见 `../docs/mvp-v2-test-evidence-2026-09-24.md` 和 `../docs/v2-order-actions-evidence-2026-09-24.md`。

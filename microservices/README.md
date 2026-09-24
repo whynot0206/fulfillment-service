@@ -15,7 +15,7 @@
 | `gateway` | 18080 | 统一入口与路由 |
 | `order-service` | 18081 | 订单创建、预占状态、支付状态 |
 | `inventory-service` | 18082 | 库存预占、释放、确认和查询 |
-| `payment-service` | 18083 | 支付成功回调入口 |
+| `payment-service` | 18083 | 支付成功回调和仅供本地演示的模拟支付 |
 | `commerce-service` | 18084 | V2 用户、商品、购物车和结算入口 |
 | `fulfillment-api` | - | DTO 与 Feign 契约，不包含数据库实体 |
 

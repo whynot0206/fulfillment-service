@@ -100,3 +100,11 @@ export function listOrders({ page = 0, size = 10 } = {}) {
 export function orderDetail(orderId) {
   return http.get(`/orders/${orderId}`)
 }
+
+export function cancelOrder(orderId) {
+  return http.post(`/orders/${orderId}/cancel`)
+}
+
+export function mockPay(orderId) {
+  return http.post(`/payments/orders/${orderId}/mock-success`)
+}

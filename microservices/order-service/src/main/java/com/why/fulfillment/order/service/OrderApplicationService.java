@@ -67,12 +67,34 @@ public class OrderApplicationService {
         try {
             InventoryReserveResponse response = inventoryClient.reserve(request);
             if (isReserved(response)) {
-                orderRepository.updateReservation(normalized.orderId(), ReservationStatus.RESERVED, null);
+                if (!orderRepository.updateReservation(normalized.orderId(), ReservationStatus.RESERVED, null)) {
+                    // A concurrent identical request may have marked RESERVED first. Releasing
+                    // in that case would destroy a valid order, so inspect durable state.
+                    OrderRecord current = orderRepository.find(normalized.orderId())
+                            .orElseThrow(() -> new IllegalStateException("order disappeared after reservation"));
+                    if (current.status() == OrderStatus.CANCELED
+                            && current.reservationStatus() == ReservationStatus.PENDING_COMPENSATION) {
+                        retryPendingCompensation(normalized.orderId());
+                    }
+                    CreateOrderResult settled = resultForExisting(current);
+                    return settled == null
+                            ? CreateOrderResult.pendingCompensation(normalized.orderId(),
+                                    "reservation result is still being settled", replayed)
+                            : settled;
+                }
                 return CreateOrderResult.reserved(normalized.orderId(), replayed);
             }
             if (isRejected(response)) {
                 String error = response == null ? "inventory rejected without a reason" : response.error();
-                orderRepository.updateReservation(normalized.orderId(), ReservationStatus.FAILED, error);
+                if (!orderRepository.updateReservation(normalized.orderId(), ReservationStatus.FAILED, error)) {
+                    OrderRecord current = orderRepository.find(normalized.orderId())
+                            .orElseThrow(() -> new IllegalStateException("order disappeared after rejection"));
+                    CreateOrderResult settled = resultForExisting(current);
+                    return settled == null
+                            ? CreateOrderResult.pendingCompensation(normalized.orderId(),
+                                    "reservation result is being settled", replayed)
+                            : settled;
+                }
                 return CreateOrderResult.failed(normalized.orderId(), error, replayed);
             }
             String error = response == null || response.error() == null || response.error().isBlank()
@@ -176,6 +198,30 @@ public class OrderApplicationService {
      */
     public Optional<OrderRecord> findOwned(long orderId, long userId) {
         return orderRepository.find(orderId).filter(order -> order.userId() == userId);
+    }
+
+    public CancelOrderResult cancelOwned(long orderId, long userId) {
+        if (orderId <= 0 || userId <= 0) {
+            throw new IllegalArgumentException("positive orderId and userId are required");
+        }
+        OrderRecord current = findOwned(orderId, userId).orElse(null);
+        if (current == null) {
+            return new CancelOrderResult(orderId, "NOT_FOUND");
+        }
+        if (current.status() == OrderStatus.CANCELED) {
+            return new CancelOrderResult(orderId, "CANCELED");
+        }
+        if (current.status() != OrderStatus.PENDING_PAYMENT) {
+            return new CancelOrderResult(orderId, "CONFLICT");
+        }
+        if (orderRepository.markUserCanceledForCompensation(orderId, userId)) {
+            retryPendingCompensation(orderId);
+            return new CancelOrderResult(orderId, "CANCELED");
+        }
+        // A payment callback or expiry task may have won the conditional update.
+        OrderRecord latest = findOwned(orderId, userId).orElse(null);
+        return new CancelOrderResult(orderId,
+                latest != null && latest.status() == OrderStatus.CANCELED ? "CANCELED" : "CONFLICT");
     }
 
     /**
@@ -360,6 +406,9 @@ public class OrderApplicationService {
      * without a second request.
      */
     public record OrderPage(List<OrderRecord> orders, long total, int page, int size) {
+    }
+
+    public record CancelOrderResult(long orderId, String state) {
     }
 
     public record CreateOrderCommand(long orderId, long userId, BigDecimal totalAmount, Long timeoutSeconds,

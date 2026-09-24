@@ -60,11 +60,11 @@ public class OrderRepository {
                    SET reservation_status = ?, reservation_error = ?,
                        status = CASE WHEN ? IN (?, ?) THEN ? ELSE status END,
                        update_time = CURRENT_TIMESTAMP
-                 WHERE order_id = ? AND reservation_status = ?
+                 WHERE order_id = ? AND reservation_status = ? AND status = ?
                 """, status.code(), truncate(error), status.code(),
                 ReservationStatus.COMPENSATED.code(), ReservationStatus.FAILED.code(),
                 OrderStatus.CANCELED.code(), orderId,
-                ReservationStatus.RESERVING.code()) == 1;
+                ReservationStatus.RESERVING.code(), OrderStatus.PENDING_PAYMENT.code()) == 1;
     }
 
     @Transactional
@@ -106,6 +106,21 @@ public class OrderRepository {
                    AND expire_time <= CURRENT_TIMESTAMP
                 """, OrderStatus.CANCELED.code(), ReservationStatus.PENDING_COMPENSATION.code(),
                 orderId, OrderStatus.PENDING_PAYMENT.code(), ReservationStatus.RESERVED.code()) == 1;
+    }
+
+    /** Competes with payment on the order row; the background worker owns release retries. */
+    @Transactional
+    public boolean markUserCanceledForCompensation(long orderId, long userId) {
+        return jdbcTemplate.update("""
+                UPDATE `order`
+                   SET status = ?, reservation_status = ?,
+                       reservation_error = 'user canceled; inventory release pending',
+                       update_time = CURRENT_TIMESTAMP
+                 WHERE order_id = ? AND user_id = ? AND status = ?
+                   AND reservation_status IN (?, ?)
+                """, OrderStatus.CANCELED.code(), ReservationStatus.PENDING_COMPENSATION.code(),
+                orderId, userId, OrderStatus.PENDING_PAYMENT.code(),
+                ReservationStatus.RESERVING.code(), ReservationStatus.RESERVED.code()) == 1;
     }
 
     @Transactional

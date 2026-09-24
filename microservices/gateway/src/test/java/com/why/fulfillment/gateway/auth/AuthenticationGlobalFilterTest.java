@@ -77,6 +77,19 @@ class AuthenticationGlobalFilterTest {
                 .getFirst(AuthenticationGlobalFilter.USER_ID_HEADER)).isEqualTo("7");
     }
 
+    @Test
+    void stripsClientSuppliedInternalTokenBeforePaymentRouting() {
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/api/payments/orders/12/mock-success")
+                        .header("X-Internal-Service-Token", "forged")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + SHARED_TEST_TOKEN));
+
+        ServerWebExchange forwarded = capture(exchange);
+
+        assertThat(forwarded.getRequest().getHeaders().containsKey("X-Internal-Service-Token")).isFalse();
+        assertThat(forwarded.getRequest().getHeaders().getFirst("X-User-Id")).isEqualTo("7");
+    }
+
     /** 白名单路径也要剥离——否则匿名接口就成了伪造请求头的入口。 */
     @Test
     void stripsClientSuppliedUserIdOnAnonymousPaths() {

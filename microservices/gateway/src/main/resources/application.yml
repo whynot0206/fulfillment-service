@@ -23,6 +23,8 @@ spring:
           uri: ${gateway.services.payment-url:http://localhost:18083}
           predicates:
             - Path=/api/payments/**
+          filters:
+            - SetRequestHeader=X-Internal-Service-Token, ${INTERNAL_SERVICE_TOKEN}
         - id: inventory-service
           uri: ${gateway.services.inventory-url:http://localhost:18082}
           predicates:

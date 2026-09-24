@@ -4,6 +4,11 @@ import com.why.fulfillment.api.order.OrderCreateRequest;
 import com.why.fulfillment.api.order.OrderCreateResponse;
 import com.why.fulfillment.api.order.OrderMarkPaidRequest;
 import com.why.fulfillment.api.order.OrderMarkPaidResponse;
+import com.why.fulfillment.api.order.OrderPaymentView;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import com.why.fulfillment.order.service.OrderApplicationService;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,6 +40,14 @@ public class InternalOrderController {
         boolean accepted = service.markPaid(request.orderId(), request.outTradeNo());
         return new OrderMarkPaidResponse(accepted, accepted ? "PAID" : "REJECTED",
                 accepted ? null : "order is not pending or trade number does not match");
+    }
+
+    @GetMapping("/{orderId}/payment-view")
+    public OrderPaymentView paymentView(@PathVariable long orderId) {
+        var order = service.find(orderId).orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "order not found"));
+        return new OrderPaymentView(order.orderId(), order.userId(), order.totalAmount(),
+                order.status().name());
     }
 
     /**

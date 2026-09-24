@@ -125,14 +125,16 @@ mvn -q -pl order-service spring-boot:run         # 18081
 mvn -q -pl commerce-service spring-boot:run      # 18084
 # 窗口 4
 mvn -q -pl gateway spring-boot:run               # 18080
+# 窗口 5
+mvn -q -pl payment-service spring-boot:run       # 18083
 ```
 
-payment-service（18083）这条链路本轮没动，要验支付回调再起。
+模拟支付需要 payment-service（18083）与其余四个进程同时运行。
 
 健康检查：
 
 ```powershell
-'18080','18081','18082','18084' | ForEach-Object {
+'18080','18081','18082','18083','18084' | ForEach-Object {
     "$_ -> " + (Invoke-RestMethod "http://localhost:$_/actuator/health").status
 }
 ```
@@ -182,9 +184,10 @@ $forged = $h.Clone(); $forged['X-User-Id'] = '999999'
 # 5.8 结算。Idempotency-Key 由调用方生成，expectedAmount 传 5.6 拿到的那个数
 $key = [guid]::NewGuid().ToString()
 $body = @{ expectedAmount = $cart.selectedAmount } | ConvertTo-Json
-Invoke-RestMethod -Method Post "$base/api/checkout" `
+$order = Invoke-RestMethod -Method Post "$base/api/checkout" `
     -Headers ($h + @{ 'Idempotency-Key' = $key }) `
     -ContentType 'application/json' -Body $body
+$order
 
 # 5.9 幂等：同键同载荷再发一次，应该拿到同一个 orderId 且 replayed=true
 Invoke-RestMethod -Method Post "$base/api/checkout" `
@@ -194,6 +197,11 @@ Invoke-RestMethod -Method Post "$base/api/checkout" `
 # 5.10 我的订单（注意 page 从 0 开始）
 (Invoke-RestMethod "$base/api/orders?page=0&size=10" -Headers $h).orders |
     Select-Object orderId, totalAmount, status, reservationStatus
+
+# 5.11 对本人待支付订单执行本地模拟支付；或调用 /api/orders/{id}/cancel 取消。
+# 两种操作应分别使用不同的新订单，支付与取消都会改变订单终态。
+$result = Invoke-RestMethod -Method Post "$base/api/payments/orders/$($order.orderId)/mock-success" -Headers $h
+$result.status
 ```
 
 第 5.1 到 5.10 步已在本机通过；第 5.4 和 5.7 是安全相关的检查。
@@ -208,8 +216,8 @@ Invoke-RestMethod -Method Post "$base/api/checkout" `
 
 ```powershell
 cd D:\vibecoding\fulfillment-service\frontend
-npm install
-npm run dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
 打开 http://localhost:5173 。开发服务器把 `/api` 代理到 18080，所以前端代码里
@@ -337,8 +345,8 @@ npm run dev
 
 不是遗漏，是明确划在 MVP 外面的：
 
-- **支付页**。支付回调走 payment-service 的 `/api/payments/callbacks/**`，
-  只能用接口模拟。
+- **真实支付渠道及持久化支付单**尚未实现。订单详情页现在有本地模拟支付按钮；
+  第三方支付回调仍走 payment-service 的 `/api/payments/callbacks/**`。
 - **令牌续期**。ttl 7200 秒，到点就被踢回登录页，正在下单也一样。
 - **令牌存储方式**。放在 localStorage，XSS 可读。正解是 HttpOnly Cookie +
   CSRF 防护。这是知道风险后的取舍。

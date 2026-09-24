@@ -41,6 +41,8 @@ class OrderApplicationServiceTest {
     @Test
     void deterministicInventoryRejectionMarksOrderFailedWithoutRelease() {
         when(inventory.reserve(any())).thenReturn(InventoryReserveResponse.rejected("insufficient stock"));
+        when(repository.updateReservation(10L, ReservationStatus.FAILED, "insufficient stock"))
+                .thenReturn(true);
 
         OrderApplicationService.CreateOrderResult result = service.createPending(command);
 
@@ -111,6 +113,7 @@ class OrderApplicationServiceTest {
                 .when(repository).insertPending(eq(10L), eq(20L), eq(BigDecimal.TEN), eq(1800L), any());
         when(repository.find(10L)).thenReturn(Optional.of(existing(ReservationStatus.RESERVING)));
         when(inventory.reserve(any())).thenReturn(InventoryReserveResponse.reserved());
+        when(repository.updateReservation(10L, ReservationStatus.RESERVED, null)).thenReturn(true);
 
         OrderApplicationService.CreateOrderResult result = service.createPending(command);
 
@@ -147,6 +150,57 @@ class OrderApplicationServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("DECIMAL(12,2)");
         verify(repository, never()).insertPending(anyLong(), anyLong(), any(), anyLong(), any());
+    }
+
+    @Test
+    void ownerCancelSchedulesReleaseAndRemainsIdempotent() {
+        when(repository.find(10L)).thenReturn(Optional.of(existing(ReservationStatus.RESERVED)),
+                Optional.of(new OrderRecord(10L, 20L, BigDecimal.TEN, 1800L,
+                        OrderStatus.CANCELED, ReservationStatus.COMPENSATED, null,
+                        null, null, null, List.of())));
+        when(repository.markUserCanceledForCompensation(10L, 20L)).thenReturn(true);
+        when(inventory.release(any())).thenReturn(InventoryReleaseResponse.released());
+
+        assertThat(service.cancelOwned(10L, 20L).state()).isEqualTo("CANCELED");
+        assertThat(service.cancelOwned(10L, 20L).state()).isEqualTo("CANCELED");
+        verify(inventory).release(any());
+        verify(repository).markCompensatedIfPending(10L, "background compensation released inventory");
+    }
+
+    @Test
+    void strangerCannotCancelAndPaidOrderCannotBeCanceled() {
+        when(repository.find(10L)).thenReturn(Optional.of(existing(ReservationStatus.RESERVED)));
+        assertThat(service.cancelOwned(10L, 21L).state()).isEqualTo("NOT_FOUND");
+
+        OrderRecord paid = new OrderRecord(10L, 20L, BigDecimal.TEN, 1800L,
+                OrderStatus.PAID, ReservationStatus.RESERVED, null,
+                "trade-1", null, null, List.of());
+        when(repository.find(10L)).thenReturn(Optional.of(paid));
+        assertThat(service.cancelOwned(10L, 20L).state()).isEqualTo("CONFLICT");
+        verify(repository, never()).markUserCanceledForCompensation(anyLong(), anyLong());
+    }
+
+    @Test
+    void reserveFinishingAfterCancelNeverReportsReserved() {
+        when(inventory.reserve(any())).thenReturn(InventoryReserveResponse.reserved());
+        when(repository.updateReservation(10L, ReservationStatus.RESERVED, null)).thenReturn(false);
+        when(repository.find(10L)).thenReturn(Optional.of(new OrderRecord(10L, 20L,
+                BigDecimal.TEN, 1800L, OrderStatus.CANCELED,
+                ReservationStatus.PENDING_COMPENSATION, null, null, null, null, List.of())));
+        when(inventory.release(any())).thenReturn(InventoryReleaseResponse.released());
+
+        assertThat(service.createPending(command).state()).isEqualTo("PENDING_COMPENSATION");
+        verify(repository).markCompensatedIfPending(10L, "background compensation released inventory");
+    }
+
+    @Test
+    void duplicateSuccessfulReservationNeverReleasesValidOrder() {
+        when(inventory.reserve(any())).thenReturn(InventoryReserveResponse.reserved());
+        when(repository.updateReservation(10L, ReservationStatus.RESERVED, null)).thenReturn(false);
+        when(repository.find(10L)).thenReturn(Optional.of(existing(ReservationStatus.RESERVED)));
+
+        assertThat(service.createPending(command).state()).isEqualTo("RESERVED");
+        verify(inventory, never()).release(any());
     }
 
     private static OrderRecord existing(ReservationStatus reservationStatus) {

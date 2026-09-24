@@ -10,7 +10,7 @@
 
 - 根目录单体应用：`src/main/java`，默认端口 `8080`，连接 `fulfillment` schema，覆盖周期 0–6 的完整实验基线，包括 MySQL 下单、库存三态、支付幂等、Redisson 延迟关单、Redis Lua 快速路径、异步命令、限流、对账和业务看板。
 - `microservices/` 运行切片：`gateway`（`18080`）、`order-service`（`18081`）、`inventory-service`（`18082`）、`payment-service`（`18083`）及只放 DTO/Feign 契约的 `fulfillment-api`。它验证真实 HTTP 边界、Saga 式状态与补偿、跨进程 Outbox、订单创建幂等、持久化超时关单、Redis 快速路径和数据所有权隔离。
-- V2 MVP 路径：Vue 前端经 Gateway 进入 `commerce-service`（用户、商品、购物车和结算模块化单体），再调用现有 Order、Inventory、Payment 核心服务。商品到模拟支付的本机链路已验收；支付页、多实例与生产部署仍未完成，证据见 `docs/mvp-v2-test-evidence-2026-09-24.md`。
+- V2 MVP 路径：Vue 前端经 Gateway 进入 `commerce-service`（用户、商品、购物车和结算模块化单体），再调用现有 Order、Inventory、Payment 核心服务。商品到模拟支付的本机链路已验收；订单详情已有主动取消和本地模拟支付按钮。Payment 持久化支付单、多实例与生产部署仍未完成，证据见 `docs/mvp-v2-test-evidence-2026-09-24.md` 与 `docs/v2-order-actions-evidence-2026-09-24.md`。
 
 代码事实优先级如下：
 
@@ -122,7 +122,7 @@ Inventory 负责可售库存 `stock`、锁定库存 `lock_stock`、锁定记录�
 
 ### Payment
 
-Payment 当前主要接收支付成功回调，校验时间窗和 HMAC-SHA256 签名，并通过内部 Order 契约请求支付状态迁移。V2 增加最小支付单和回调记录，仍由 Payment 拥有支付事实；外部交易号唯一约束和订单条件更新是幂等边界。不要在 Payment 中直接扣库存。
+Payment 当前接收支付成功回调，校验时间窗和 HMAC-SHA256 签名，并通过内部 Order 契约请求支付状态迁移；本地模拟支付先校验订单归属，再复用同一迁移路径。持久化支付单和回调记录尚未落地，Order 的外部交易号唯一约束和状态条件更新是现阶段幂等边界。不要在 Payment 中直接扣库存。
 
 ### User、Product、Cart（V2）
 
