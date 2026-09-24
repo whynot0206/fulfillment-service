@@ -18,6 +18,7 @@
 
     <modules>
         <module>fulfillment-api</module>
+        <module>commerce-service</module>
         <module>inventory-service</module>
         <module>order-service</module>
         <module>payment-service</module>

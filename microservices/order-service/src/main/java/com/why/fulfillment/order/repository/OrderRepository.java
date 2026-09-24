@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -42,9 +44,11 @@ public class OrderRepository {
         }
         for (OrderItemRecord item : items) {
             jdbcTemplate.update("""
-                    INSERT INTO order_item (order_id, sku_id, spu_id, `count`, price)
-                    VALUES (?, ?, ?, ?, ?)
-                    """, orderId, item.skuId(), item.spuId(), item.count(), item.price());
+                    INSERT INTO order_item (order_id, sku_id, spu_id, `count`, price,
+                                            name_snapshot, spec_snapshot)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, orderId, item.skuId(), item.spuId(), item.count(), item.price(),
+                    item.nameSnapshot(), item.specSnapshot());
         }
     }
 
@@ -202,24 +206,76 @@ public class OrderRepository {
     }
 
     public Optional<OrderRecord> find(long orderId) {
-        Optional<OrderRecord> order = jdbcTemplate.query("""
+        return jdbcTemplate.query("""
                 SELECT order_id, user_id, total_amount, timeout_seconds, status,
-                       reservation_status, reservation_error, out_trade_no, pay_time, expire_time
+                       reservation_status, reservation_error, out_trade_no, pay_time, expire_time,
+                       create_time
                   FROM `order` WHERE order_id = ?
-                """, this::map, orderId).stream().findFirst();
-        return order.map(record -> new OrderRecord(record.orderId(), record.userId(),
-                record.totalAmount(), record.timeoutSeconds(), record.status(), record.reservationStatus(),
-                record.reservationError(), record.outTradeNo(), record.payTime(),
-                record.expireTime(), findItems(orderId)));
+                """, this::map, orderId).stream().findFirst()
+                .map(record -> record.withItems(findItems(List.of(orderId))
+                        .getOrDefault(orderId, List.of())));
     }
 
-    private List<OrderItemRecord> findItems(long orderId) {
-        return jdbcTemplate.query("""
-                SELECT sku_id, spu_id, `count`, price
-                  FROM order_item WHERE order_id = ? ORDER BY sku_id
-                """, (rs, rowNum) -> new OrderItemRecord(
-                rs.getLong("sku_id"), rs.getLong("spu_id"),
-                rs.getInt("count"), rs.getBigDecimal("price")), orderId);
+    /**
+     * One page of a user's orders, newest first.
+     *
+     * <p>Ordering repeats the index column order so MySQL can walk
+     * {@code idx_order_user_time} backwards instead of sorting. {@code order_id} is in the
+     * ORDER BY as a tiebreaker: without it, two orders created in the same second can swap
+     * places between two page requests, which makes a row appear twice or not at all.</p>
+     *
+     * <p>Paging is OFFSET based. That is honest for a personal order list, where the offset
+     * stays small; it is <b>not</b> what a deep, unbounded listing should use, because MySQL
+     * still walks and discards the skipped rows. The caller bounds the offset (see
+     * {@code OrderApplicationService}) rather than leaving that cost open-ended.</p>
+     */
+    public List<OrderRecord> findByUser(long userId, int limit, int offset) {
+        List<OrderRecord> orders = jdbcTemplate.query("""
+                SELECT order_id, user_id, total_amount, timeout_seconds, status,
+                       reservation_status, reservation_error, out_trade_no, pay_time, expire_time,
+                       create_time
+                  FROM `order`
+                 WHERE user_id = ?
+                 ORDER BY create_time DESC, order_id DESC
+                 LIMIT ? OFFSET ?
+                """, this::map, userId, limit, offset);
+        if (orders.isEmpty()) {
+            return List.of();
+        }
+        // One IN query for every line on the page instead of one query per order.
+        // With 20 orders per page the N+1 version is 21 round trips; this is 2.
+        Map<Long, List<OrderItemRecord>> itemsByOrder =
+                findItems(orders.stream().map(OrderRecord::orderId).toList());
+        return orders.stream()
+                .map(order -> order.withItems(itemsByOrder.getOrDefault(order.orderId(), List.of())))
+                .toList();
+    }
+
+    public long countByUser(long userId) {
+        Long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM `order` WHERE user_id = ?", Long.class, userId);
+        return total == null ? 0L : total;
+    }
+
+    private Map<Long, List<OrderItemRecord>> findItems(List<Long> orderIds) {
+        if (orderIds.isEmpty()) {
+            return Map.of();
+        }
+        String placeholders = String.join(",", Collections.nCopies(orderIds.size(), "?"));
+        List<Map.Entry<Long, OrderItemRecord>> rows = jdbcTemplate.query("""
+                SELECT order_id, sku_id, spu_id, `count`, price, name_snapshot, spec_snapshot
+                  FROM order_item WHERE order_id IN (%s) ORDER BY order_id, sku_id
+                """.formatted(placeholders),
+                (rs, rowNum) -> Map.entry(rs.getLong("order_id"), new OrderItemRecord(
+                        rs.getLong("sku_id"), rs.getLong("spu_id"),
+                        rs.getInt("count"), rs.getBigDecimal("price"),
+                        rs.getString("name_snapshot"), rs.getString("spec_snapshot"))),
+                orderIds.toArray());
+        Map<Long, List<OrderItemRecord>> grouped = new LinkedHashMap<>();
+        for (Map.Entry<Long, OrderItemRecord> row : rows) {
+            grouped.computeIfAbsent(row.getKey(), key -> new ArrayList<>()).add(row.getValue());
+        }
+        return grouped;
     }
 
     private OrderRecord map(ResultSet rs, int rowNum) throws java.sql.SQLException {
@@ -234,7 +290,8 @@ public class OrderRepository {
                 rs.getString("out_trade_no"),
                 rs.getObject("pay_time", LocalDateTime.class),
                 rs.getObject("expire_time", LocalDateTime.class),
-                List.of());
+                List.of(),
+                rs.getObject("create_time", LocalDateTime.class));
     }
 
     private static OrderStatus toOrderStatus(int code) {

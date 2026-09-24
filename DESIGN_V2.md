@@ -2,7 +2,7 @@
 
 > 文档状态：下一版本迭代设计
 >
-> 事实口径：当前代码与测试优先，docs/project-function-boundary.md 是现状边界入口；本文中的“目标”“计划”“V2”表示尚未全部落地的设计。
+> 事实口径：当前代码与测试优先，docs/project-function-boundary.md 是现状边界入口；本文中的“目标”“计划”“V2”表示尚未全部落地的设计。2026-09-24 的 MVP 实现与本机验收见 docs/mvp-v2-test-evidence-2026-09-24.md。
 
 ## 1. 项目定位
 

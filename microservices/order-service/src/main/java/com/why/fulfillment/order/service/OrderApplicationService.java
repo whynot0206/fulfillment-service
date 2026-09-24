@@ -6,6 +6,7 @@ import com.why.fulfillment.api.inventory.InventoryReleaseResponse;
 import com.why.fulfillment.api.inventory.InventoryReserveRequest;
 import com.why.fulfillment.api.inventory.InventoryReserveResponse;
 import com.why.fulfillment.api.inventory.InventoryReserveItem;
+import com.why.fulfillment.api.order.OrderCreateRequest;
 import com.why.fulfillment.order.domain.OrderRecord;
 import com.why.fulfillment.order.domain.OrderItemRecord;
 import com.why.fulfillment.order.domain.OrderStatus;
@@ -25,6 +26,12 @@ public class OrderApplicationService {
 
     private static final long DEFAULT_TIMEOUT_SECONDS = 1800;
     private static final long MAX_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
+    private static final int MAX_PAGE_SIZE = 50;
+    private static final int MAX_OFFSET = 1000;
+    /** Matches order_item.name_snapshot VARCHAR(128); see migration-v2-order-snapshot.sql. */
+    private static final int MAX_NAME_SNAPSHOT_LENGTH = 128;
+    /** Matches order_item.spec_snapshot VARCHAR(500). */
+    private static final int MAX_SPEC_SNAPSHOT_LENGTH = 500;
 
     private final OrderRepository orderRepository;
     private final InventoryClient inventoryClient;
@@ -85,6 +92,56 @@ public class OrderApplicationService {
     }
 
     /**
+     * Creates an order on behalf of Commerce checkout, carrying the price snapshot.
+     *
+     * <p>It converges on {@link #createPending} so the idempotency, reservation and
+     * compensation behaviour is literally the same code as the public entry point. The only
+     * thing this method adds is a check the public endpoint does not have: the declared total
+     * must equal the sum of the lines.</p>
+     *
+     * <p>That check is not paranoia about Commerce being buggy — it is about which number the
+     * user was shown. Commerce computed a total, rendered it, and the user agreed to it. If
+     * that total disagrees with the lines, one of the two is wrong and we do not know which,
+     * so charging the recomputed sum would mean charging a number nobody saw. Rejecting is the
+     * only answer that cannot silently overcharge.</p>
+     */
+    public CreateOrderResult createFromCommerce(OrderCreateRequest request) {
+        if (request == null || request.orderId() == null || request.userId() == null
+                || request.items() == null || request.items().isEmpty()) {
+            throw new IllegalArgumentException("orderId, userId and at least one item are required");
+        }
+        List<OrderItemCommand> items = request.items().stream()
+                .map(item -> new OrderItemCommand(item.skuId(), item.spuId(), item.count(), item.price(),
+                        item.nameSnapshot(), item.specSnapshot()))
+                .toList();
+        requireTotalMatchesItems(request.totalAmount(), items);
+        return createPending(new CreateOrderCommand(request.orderId(), request.userId(),
+                request.totalAmount(), request.timeoutSeconds(), items));
+    }
+
+    private static void requireTotalMatchesItems(BigDecimal declaredTotal, List<OrderItemCommand> items) {
+        if (declaredTotal == null) {
+            throw new IllegalArgumentException("totalAmount is required");
+        }
+        BigDecimal sum = BigDecimal.ZERO;
+        for (OrderItemCommand item : items) {
+            if (item == null || item.price() == null || item.count() == null) {
+                // Leave the detailed per-item complaint to validate(); here we only need to
+                // avoid a NullPointerException while adding things up.
+                throw new IllegalArgumentException("each item must contain a count and a price");
+            }
+            sum = sum.add(item.price().multiply(BigDecimal.valueOf(item.count())));
+        }
+        // compareTo, not equals: 10.0 and 10.00 are the same amount of money but different
+        // BigDecimal values. equals() here would reject correct requests over trailing zeros.
+        if (sum.compareTo(declaredTotal) != 0) {
+            throw new IllegalArgumentException(
+                    "totalAmount " + declaredTotal.toPlainString() + " does not match the sum of items "
+                            + sum.toPlainString());
+        }
+    }
+
+    /**
      * Internal payment transition. It returns true for a repeated callback that already applied the
      * same trade number, allowing payment retries to stop without changing order state again.
      */
@@ -107,6 +164,41 @@ public class OrderApplicationService {
 
     public Optional<OrderRecord> find(long orderId) {
         return orderRepository.find(orderId);
+    }
+
+    /**
+     * Order detail, scoped to its owner.
+     *
+     * <p>Returns empty both when the order does not exist and when it belongs to somebody
+     * else. The caller turns both into 404. A 403 for the second case would be a working
+     * order-id oracle: an attacker enumerating ids could tell which ones exist from the status
+     * code alone, and order ids are far from unguessable.</p>
+     */
+    public Optional<OrderRecord> findOwned(long orderId, long userId) {
+        return orderRepository.find(orderId).filter(order -> order.userId() == userId);
+    }
+
+    /**
+     * One page of the caller's own orders.
+     *
+     * <p>{@code page} is zero based. The offset is capped rather than left open: OFFSET makes
+     * MySQL walk and throw away every skipped row, so an unbounded page number is a cheap way
+     * for one request to scan a user's entire order history. Nobody browses to page 500 of
+     * their own orders; a crawler does.</p>
+     */
+    public OrderPage findForUser(long userId, int page, int size) {
+        if (userId <= 0) {
+            throw new IllegalArgumentException("a positive userId is required");
+        }
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        int safePage = Math.max(page, 0);
+        int offset = safePage * safeSize;
+        if (offset > MAX_OFFSET) {
+            throw new IllegalArgumentException(
+                    "page is too deep; at most " + MAX_OFFSET + " orders can be skipped");
+        }
+        return new OrderPage(orderRepository.findByUser(userId, safeSize, offset),
+                orderRepository.countByUser(userId), safePage, safeSize);
     }
 
     public void retryPendingCompensation(long orderId) {
@@ -167,6 +259,14 @@ public class OrderApplicationService {
         for (int index = 0; index < command.items().size(); index++) {
             OrderItemRecord stored = existing.items().get(index);
             OrderItemCommand requested = command.items().get(index);
+            // nameSnapshot / specSnapshot are deliberately NOT compared.
+            //
+            // They are display text, and they are read from the product service at the moment
+            // the request is built. A retry that happens after the merchant renamed the product
+            // would carry different wording for the same order — comparing it would turn a
+            // legitimate, safe replay into a 409 and leave the caller with an order it cannot
+            // finish and cannot recreate. What must match is what the two sides agreed on:
+            // who, how much, which skus, what price.
             if (!stored.skuId().equals(requested.skuId())
                     || !stored.spuId().equals(requested.spuId())
                     || !stored.count().equals(requested.count())
@@ -234,6 +334,10 @@ public class OrderApplicationService {
                 throw new IllegalArgumentException(
                         "each item must contain positive skuId/spuId/count and a DECIMAL(12,2) price");
             }
+            // Reject rather than truncate. Truncating would write a product name that is not
+            // the product's name and nobody would ever find out; a rejected request is loud.
+            requireFits(item.nameSnapshot(), MAX_NAME_SNAPSHOT_LENGTH, "nameSnapshot");
+            requireFits(item.specSnapshot(), MAX_SPEC_SNAPSHOT_LENGTH, "specSnapshot");
         });
         long distinctSkuCount = command.items().stream().map(OrderItemCommand::skuId).distinct().count();
         if (distinctSkuCount != command.items().size()) {
@@ -245,17 +349,36 @@ public class OrderApplicationService {
         return value.scale() <= 2 && value.precision() - value.scale() <= 10;
     }
 
+    private static void requireFits(String value, int maxLength, String field) {
+        if (value != null && value.length() > maxLength) {
+            throw new IllegalArgumentException(field + " must be at most " + maxLength + " characters");
+        }
+    }
+
+    /**
+     * A page of orders plus the total count, so the caller can render "第 N 页 / 共 M 条"
+     * without a second request.
+     */
+    public record OrderPage(List<OrderRecord> orders, long total, int page, int size) {
+    }
+
     public record CreateOrderCommand(long orderId, long userId, BigDecimal totalAmount, Long timeoutSeconds,
                                      List<OrderItemCommand> items) {
     }
 
-    public record OrderItemCommand(Long skuId, Long spuId, Integer count, BigDecimal price) {
+    public record OrderItemCommand(Long skuId, Long spuId, Integer count, BigDecimal price,
+                                   String nameSnapshot, String specSnapshot) {
+
+        public OrderItemCommand(Long skuId, Long spuId, Integer count, BigDecimal price) {
+            this(skuId, spuId, count, price, null, null);
+        }
+
         InventoryReserveItem toInventoryItem() {
             return new InventoryReserveItem(skuId, spuId, count);
         }
 
         OrderItemRecord toRecord() {
-            return new OrderItemRecord(skuId, spuId, count, price);
+            return new OrderItemRecord(skuId, spuId, count, price, nameSnapshot, specSnapshot);
         }
     }
 

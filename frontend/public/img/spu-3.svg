@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="保温杯 T500">
+  <rect width="400" height="300" fill="#f2f2f5"/>
+  <rect x="164" y="40" width="72" height="26" rx="8" fill="#2f2f36"/>
+  <path d="M166 70h68l-6 186a10 10 0 0 1-10 9h-36a10 10 0 0 1-10-9z" fill="#8a8a94"/>
+  <path d="M166 70h22l-5 195h-11a10 10 0 0 1-10-9z" fill="#a4a4ad"/>
+  <rect x="170" y="150" width="60" height="8" rx="4" fill="#b4441f"/>
+</svg>

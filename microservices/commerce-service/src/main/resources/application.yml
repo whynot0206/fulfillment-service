@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: commerce-service
+  datasource:
+    url: ${COMMERCE_DATASOURCE_URL:jdbc:mysql://localhost:3306/fulfillment_commerce?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${COMMERCE_DB_USERNAME:fulfillment_commerce_app}
+    password: ${COMMERCE_DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      timeout: ${REDIS_TIMEOUT:2s}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+server:
+  port: ${SERVER_PORT:18084}
+
+# 下游服务地址。Feign 契约里写的是同名占位符，这里给本地默认值。
+inventory:
+  service:
+    url: ${INVENTORY_SERVICE_URL:http://localhost:18082}
+order:
+  service:
+    url: ${ORDER_SERVICE_URL:http://localhost:18081}
+
+internal:
+  service:
+    token: ${INTERNAL_SERVICE_TOKEN:}
+
+# JWT 签名密钥。没有默认值是故意的：启动时缺失直接失败，
+# 避免出现「用内置弱密钥跑起来了」这种本地能过、上线才炸的情况。
+auth:
+  jwt:
+    secret: ${AUTH_JWT_SECRET:}
+    issuer: ${AUTH_JWT_ISSUER:fulfillment-commerce}
+    ttl-seconds: ${AUTH_JWT_TTL_SECONDS:7200}
+
+commerce:
+  # 发号器节点号。多实例部署时**必须**每个实例配不同的值，配重了会发出重复订单号，
+  # 而且要等订单表唯一键报错才会被发现。见 OrderIdGenerator 的类注释。
+  node-id: ${COMMERCE_NODE_ID:0}
+  cart:
+    max-items: ${COMMERCE_CART_MAX_ITEMS:50}
+    max-quantity-per-sku: ${COMMERCE_CART_MAX_QUANTITY:200}
+    cache-ttl-seconds: ${COMMERCE_CART_CACHE_TTL:300}
+  checkout:
+    # 下单后多久没付款就释放预占的库存。这个值传给订单服务，
+    # 由那边的超时回收任务执行——Commerce 只是转述用户的下单意图，不负责计时。
+    order-timeout-seconds: ${COMMERCE_ORDER_TIMEOUT_SECONDS:1800}
+
+management:
+  metrics:
+    tags:
+      application: fulfillment-commerce
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

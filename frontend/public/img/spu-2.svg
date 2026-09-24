@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="无线鼠标 M2">
+  <rect width="400" height="300" fill="#f2f2f5"/>
+  <path d="M200 66c38 0 62 34 62 86s-24 82-62 82-62-30-62-82 24-86 62-86z" fill="#2f2f36"/>
+  <path d="M200 66c-20 0-35 10-45 27h45z" fill="#4a4a54"/>
+  <path d="M200 66c20 0 35 10 45 27h-45z" fill="#3c3c44"/>
+  <rect x="196" y="96" width="8" height="34" rx="4" fill="#b4441f"/>
+</svg>

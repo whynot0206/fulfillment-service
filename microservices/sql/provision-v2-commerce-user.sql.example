@@ -1,0 +1,13 @@
+-- 把本文件复制到仓库之外，替换占位密码，再用 MySQL 管理员账号执行。
+-- 与周期 11 的最小权限口径一致：账号只能访问自己的 schema。
+--
+-- 注意授权范围：Commerce 需要 DELETE（购物车删除条目），
+-- Order / Inventory 当前只有 SELECT/INSERT/UPDATE，不要顺手给它们加 DELETE。
+
+CREATE USER IF NOT EXISTS 'fulfillment_commerce_app'@'127.0.0.1'
+  IDENTIFIED BY 'replace-with-commerce-password';
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON `fulfillment_commerce`.* TO 'fulfillment_commerce_app'@'127.0.0.1';
+
+FLUSH PRIVILEGES;

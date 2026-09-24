@@ -10,7 +10,7 @@
 
 - 根目录单体应用：`src/main/java`，默认端口 `8080`，连接 `fulfillment` schema，覆盖周期 0–6 的完整实验基线，包括 MySQL 下单、库存三态、支付幂等、Redisson 延迟关单、Redis Lua 快速路径、异步命令、限流、对账和业务看板。
 - `microservices/` 运行切片：`gateway`（`18080`）、`order-service`（`18081`）、`inventory-service`（`18082`）、`payment-service`（`18083`）及只放 DTO/Feign 契约的 `fulfillment-api`。它验证真实 HTTP 边界、Saga 式状态与补偿、跨进程 Outbox、订单创建幂等、持久化超时关单、Redis 快速路径和数据所有权隔离。
-- V2 目标路径：前端经 Nginx/Gateway 进入 `commerce-service`（用户、商品、购物车模块化单体），再调用现有 Order、Inventory、Payment 核心服务。`commerce-service` 和前端尚未落地，不能把目标能力写成当前已实现能力。
+- V2 MVP 路径：Vue 前端经 Gateway 进入 `commerce-service`（用户、商品、购物车和结算模块化单体），再调用现有 Order、Inventory、Payment 核心服务。商品到模拟支付的本机链路已验收；支付页、多实例与生产部署仍未完成，证据见 `docs/mvp-v2-test-evidence-2026-09-24.md`。
 
 代码事实优先级如下：
 
@@ -19,7 +19,7 @@
 > docs 下的验收证据 > README 与项目规划 > 一般工程偏好
 ```
 
-文档与代码不一致时，按当前代码和测试修正实现与文档；不要把规划中的目标能力写成已完成能力。当前微服务是本机四进程运行切片，不应描述为生产级高可用系统。
+文档与代码不一致时，按当前代码和测试修正实现与文档；不要把规划中的目标能力写成已完成能力。当前 V2 MVP 是本机五进程运行切片，不应描述为生产级高可用系统。
 
 `DESIGN_V2.md` 是 V2 的目标设计和迁移顺序，不是当前实现清单。实现任务必须先判断目标是否已落地，再决定是修复现状、补齐 P0，还是推进 P1/P2。
 
@@ -160,14 +160,14 @@ V2 的 `commerce-service` 负责用户最小登录/身份、商品 SPU/SKU/价�
 ├── sql/                            单体初始化脚本和周期迁移
 ├── microservices/
 │   ├── fulfillment-api/            DTO、Feign Client、内部调用配置；无实体和数据库
-│   ├── commerce-service/           V2 用户、商品、SKU、购物车模块化单体（计划新增）
+│   ├── commerce-service/           V2 用户、商品、SKU、购物车与结算服务
 │   ├── gateway/                    Spring Cloud Gateway 路由
 │   ├── order-service/              订单编排、状态、Outbox、关单、命令和补偿
 │   ├── inventory-service/          库存事务、Redis Lua、账本和对账
 │   ├── payment-service/            支付签名校验和 Order 调用
 │   ├── sql/                        周期 7–11 微服务迁移和 schema 隔离脚本
 │   └── <module>/src/test/           各服务测试（位于对应模块下）
-├── frontend/                       V2 前端商城（计划新增，经 Gateway 调 API）
+├── frontend/                       V2 Vue 前端商城，经 Gateway 调 API
 ├── DESIGN_V2.md                    V2 业务边界、架构、迁移和任务设计
 ├── docs/                           功能边界、规划、审计记录和周期验收证据
 ├── performance/                    JMeter 计划、同配置压测脚本和口径

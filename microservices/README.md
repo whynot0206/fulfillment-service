@@ -3,7 +3,7 @@
 这个目录是从现有单体逐步拆分出的独立运行路径。根目录单体继续作为周期 0–6 的可复现实验基线，
 这里用于验证真实网络边界、服务故障和补偿流程。
 
-当前能力矩阵和对外口径见 [`../docs/project-function-boundary.md`](../docs/project-function-boundary.md)。这里的“微服务”特指本机四进程运行切片，不代表全部单体能力已迁移或已经达到生产部署标准。
+当前能力矩阵和对外口径见 [`../docs/project-function-boundary.md`](../docs/project-function-boundary.md)。周期 7–12 是本机四进程运行切片；V2 MVP 增加 Commerce，成为本机五进程链路。两者均不代表生产部署标准。
 
 周期 11 后，Order 和 Inventory 使用同一 MySQL 实例中的独立 schema 与应用账号。根目录单体仍连接旧
 `fulfillment` 库作为回归基线；它不再与微服务切片竞争同一批 Order Outbox 数据。
@@ -16,6 +16,7 @@
 | `order-service` | 18081 | 订单创建、预占状态、支付状态 |
 | `inventory-service` | 18082 | 库存预占、释放、确认和查询 |
 | `payment-service` | 18083 | 支付成功回调入口 |
+| `commerce-service` | 18084 | V2 用户、商品、购物车和结算入口 |
 | `fulfillment-api` | - | DTO 与 Feign 契约，不包含数据库实体 |
 
 ## 调用链

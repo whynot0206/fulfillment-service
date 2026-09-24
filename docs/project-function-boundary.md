@@ -1,6 +1,6 @@
 # 项目功能边界与对外口径
 
-> 更新日期：2026-09-21  
+> 更新日期：2026-09-24
 > 本文是当前仓库功能边界的唯一事实入口。规划目标以 [`project-plan-v3.1.md`](project-plan-v3.1.md) 为准，完成状态以源码、自动化测试和 `docs` 下的验收证据为准。
 
 ## 1. 当前有两条运行路径
@@ -11,7 +11,10 @@ flowchart LR
     M --> DB[(MySQL fulfillment)]
     M --> R[(Redis)]
 
-    C --> G[Gateway :18080]
+    C --> F[Vue 前端]
+    F --> G[Gateway :18080]
+    C --> G
+    G --> CO[Commerce :18084]
     G --> O[Order :18081]
     G --> P[Payment :18083]
     G --> I[Inventory 查询 :18082]
@@ -21,10 +24,13 @@ flowchart LR
     I --> IDB[(MySQL fulfillment_inventory)]
     O --> R[(Redis)]
     I --> R
+    CO --> CDB[(MySQL fulfillment_commerce)]
+    CO --> O
+    CO --> I
 ```
 
 - **根目录单体**：周期 0–6 的完整实验与回归基线，覆盖超时关单、Redis 快速下单、异步落库、对账、限流和业务看板。
-- **`microservices` 运行切片**：周期 7–11 持续演进的四进程交易链路，验证 Gateway、Feign、服务间鉴权、Saga 补偿、跨进程 Outbox、订单创建幂等、持久化超时关单、Redis 快速下单和数据所有权隔离。
+- **`microservices` 运行切片**：周期 7–12 的四进程交易链路验证 Gateway、Feign、Saga 补偿、Outbox、超时关单和数据所有权；V2 MVP 加入 Commerce，形成五进程商品到支付回调链路。
 - 根目录单体继续使用 `fulfillment`；微服务 Order 和 Inventory 分别使用 `fulfillment_order`、`fulfillment_inventory`。三个 schema 当前位于同一个 MySQL 实例。
 
 ## 2. 功能矩阵
@@ -40,12 +46,14 @@ flowchart LR
 | 异步订单落库与死信补偿 | 已实现 | 周期 10 已实现租约、重试和补偿终态 | 两条路径都有，状态表不同 |
 | Redis/MySQL 库存对账 | 已实现 | 周期 10 已实现只读差异报告 | 两条路径都有，不自动修复 |
 | 双层令牌桶限流 | 已实现，默认关闭 | 未迁移 | 单体独有 |
-| 业务看板与自定义指标 | 已实现 | 仅有 Actuator 基础端点 | 单体独有 |
+| 业务看板与自定义指标 | 已实现 | 周期 12 已有订单与库存业务指标，Grafana 仍以本机静态目标运行 | 看板能力范围不同 |
 | Gateway 与 Feign 契约 | 无远程调用 | 已实现 | 微服务独有 |
 | 库存取消栅栏 | 无 | 已实现，阻止晚到预占 | 微服务独有 |
 | 订单查询接口 | 未提供 Controller | `GET /api/orders/{id}` | 微服务独有 |
 | `order_item` 明细持久化 | 未实现 | 周期 8 已实现，与订单主表同一本地事务 | 微服务已覆盖 |
 | 订单创建请求幂等 | 未实现 | 周期 8 已实现，同载荷重放、异载荷冲突 | 微服务已覆盖 |
+| 商品、用户、购物车与结算 | 未实现 | V2 MVP 在 Commerce 已实现；商品快照随订单写入 Order | 本机主链路已验收 |
+| 网关 JWT 与订单直连防护 | 未实现 | V2 MVP 已实现；Order 的 `/api/orders/**` 要求内部令牌 | 本机验证伪造直连请求为 401 |
 | Nacos 服务发现与配置 | 未实现 | 未实现，使用固定 URL 环境变量 | 后续项 |
 | 独立数据库/schema/账号 | 未实现 | 周期 11 已拆为两个 schema 和最小权限账号 | 已形成数据所有权边界；仍共用 MySQL 实例 |
 
@@ -57,9 +65,10 @@ flowchart LR
 | `order-service` | 18081 | 创建订单、预占状态、支付状态、Outbox、Redis 命令与补偿调度 | `order`、`order_item`、`order_outbox_event`、`microservice_order_command` |
 | `inventory-service` | 18082 | 库存预占、释放、确认、Redis 原子预扣、查询、对账和取消栅栏 | `sku_stock`、`sku_stock_lock`、`inventory_reservation_fence`、`inventory_redis_reservation` |
 | `payment-service` | 18083 | 校验支付回调并调用 Order | 不访问数据库 |
+| `commerce-service` | 18084 | 用户、商品、购物车、结算幂等与价格快照 | `fulfillment_commerce` 中的用户、商品、购物车和结算记录 |
 | `fulfillment-api` | - | DTO 与 Feign 契约 | 不包含实体或 Mapper |
 
-这已经形成代码、进程、本地事务、schema 和账号边界。两个业务 schema 仍部署在同一 MySQL 实例，服务发现、多实例验证和生产运维体系尚未完成，因此当前仍称为**本地微服务运行切片**。
+这已经形成代码、进程、本地事务、schema 和账号边界。三个业务 schema 仍部署在同一 MySQL 实例，服务发现、多实例验证和生产运维体系尚未完成，因此当前仍称为**本地微服务运行切片**。
 
 ## 4. 一致性语义
 
@@ -95,6 +104,7 @@ flowchart LR
 - 周期 9：2 秒未支付订单约 2.64 秒完成取消和库存释放，支付成功订单不会被到期扫描覆盖。
 - 周期 10：真实 Gateway Redis 下单完成命令持久化、Lua 预扣和异步订单创建；30 秒到期后 MySQL 与 Redis 均恢复到 20，锁记录进入已释放，对账不再报告该 SKU。
 - 周期 11：双 schema 与最小权限账号下，真实 Gateway Redis 下单完成预扣、异步落库和账本物化；3 秒到期后订单、MySQL 库存、Redis 库存和 Inventory 账本全部收敛，目标 SKU 对账无差异。
+- V2 MVP：本机五进程完成匿名浏览、注册、购物车、结算同键重放、订单查询、模拟支付及库存确认；微服务 109 项测试和单体 47 项回归通过。
 
 ### 对外必须带上的限定
 
@@ -109,7 +119,7 @@ flowchart LR
 
 - 生产级高可用、多实例无重复、零数据丢失或自动容灾。
 - Nacos、负载均衡、灰度发布、Seata、RocketMQ 或 MySQL 实例级拆分。
-- TLS、密钥轮换、服务身份、用户鉴权、细粒度授权和防重放存储。
+- TLS、密钥轮换、生产级服务身份、细粒度授权和防重放存储。V2 入口已有 JWT；Order 公共路由已有内部令牌，但不等于完整身份体系。
 - 微服务全量 Prometheus/Grafana、分布式追踪、集中日志、告警和 SLO。
 - 周期 12 已完成四个微服务 Prometheus 指标端点与静态抓取配置；多实例告警、分布式追踪、集中日志和 SLO 仍未完成。
 - 微服务容量结论；周期 5 的数据来自单机短时单体路径。
@@ -156,4 +166,5 @@ flowchart LR
 - `docs/cycle10-redis-microservice-evidence-2026-09-21.md`
 - `docs/cycle11-schema-isolation-evidence-2026-09-21.md`
 - `docs/cycle12-observability-evidence-2026-09-21.md`
+- `docs/mvp-v2-test-evidence-2026-09-24.md`
 - `docs/audit-remediation-2026-09-19.md`
