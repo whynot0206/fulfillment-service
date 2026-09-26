@@ -1,5 +1,8 @@
 package com.why.fulfillment.payment.service;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+
 import com.why.fulfillment.api.order.OrderClient;
 import com.why.fulfillment.api.order.OrderMarkPaidRequest;
 import com.why.fulfillment.api.order.OrderMarkPaidResponse;
@@ -68,7 +71,8 @@ public class PaymentApplicationService {
                 ? exception.getClass().getSimpleName() : exception.getMessage();
     }
 
-    public record CallbackResult(long orderId, String status, String error) {
+    public record CallbackResult(@JsonSerialize(using = ToStringSerializer.class) long orderId,
+                                 String status, String error) {
         static CallbackResult accepted(long orderId) {
             return new CallbackResult(orderId, "ACCEPTED", null);
         }

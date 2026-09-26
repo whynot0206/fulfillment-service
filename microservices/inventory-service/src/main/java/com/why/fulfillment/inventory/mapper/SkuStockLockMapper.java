@@ -14,8 +14,9 @@ import java.util.List;
 public interface SkuStockLockMapper {
 
     /**
-     * The lock rows are returned in the same order used by reserve.  FOR
-     * UPDATE makes release and confirm mutually exclusive with each other.
+     * Current-read lock rows in the same SKU order used by reserve. Mutating
+     * callers first own the order's fence row and use READ_COMMITTED: keep row
+     * locks without a REPEATABLE_READ gap lock for an order with no lock rows.
      */
     @Select("select id, order_id, sku_id, spu_id, `count`, status, create_time, update_time "
             + "from sku_stock_lock where order_id = #{orderId} "

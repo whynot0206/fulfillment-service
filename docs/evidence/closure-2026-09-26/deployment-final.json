@@ -1,0 +1,52 @@
+{
+  "frontendHttpStatus": 200,
+  "passed": true,
+  "recordedAtUtc": "2026-09-26T13:52:36.6087899Z",
+  "faultProxiesStopped": true,
+  "mode": "Single-instance direct service URLs, loopback-only, local simulated payment",
+  "originalMysql3306StillListening": true,
+  "project": "fulfillment-acceptance",
+  "mysqlDefaults": "REPEATABLE-READ\tREPEATABLE-READ\tROW",
+  "services": [
+    {
+      "usesFaultProxy": false,
+      "jarSha256": "51077502523D40F5DDCED813E6777CEC3F6C191A5857F86E480DBEACCE2783AA",
+      "service": "inventory-service",
+      "port": 18082,
+      "status": "UP",
+      "ownedProcessId": 111804
+    },
+    {
+      "usesFaultProxy": false,
+      "jarSha256": "C81F07F382C233D74D3E1525C3E2D813F8F7DA794201BF9BD35E23A5F45A14D9",
+      "service": "payment-service",
+      "port": 18083,
+      "status": "UP",
+      "ownedProcessId": 112032
+    },
+    {
+      "usesFaultProxy": false,
+      "jarSha256": "2A70DEB6DFA0D2B965233CB57120166686FD9FDC2416F8437436128E4B12241D",
+      "service": "gateway",
+      "port": 18080,
+      "status": "UP",
+      "ownedProcessId": 108480
+    },
+    {
+      "usesFaultProxy": false,
+      "jarSha256": "8F454F92E5046F9B978FA7BB26F4B6AC277D48277C009DE762FEB0C147198E9B",
+      "service": "order-service",
+      "port": 18081,
+      "status": "UP",
+      "ownedProcessId": 112152
+    },
+    {
+      "usesFaultProxy": false,
+      "jarSha256": "0F99CB4045AB49417D4BA3CE42B0A11C876E051D9F9B4090575AC2AEEA5C85F2",
+      "service": "commerce-service",
+      "port": 18084,
+      "status": "UP",
+      "ownedProcessId": 111900
+    }
+  ]
+}

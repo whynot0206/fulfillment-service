@@ -10,6 +10,7 @@ public class CartItem {
     private Long skuId;
     private Integer quantity;
     private Boolean selected;
+    private Long revision;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
@@ -51,6 +52,14 @@ public class CartItem {
 
     public void setSelected(Boolean selected) {
         this.selected = selected;
+    }
+
+    public Long getRevision() {
+        return revision;
+    }
+
+    public void setRevision(Long revision) {
+        this.revision = revision;
     }
 
     public LocalDateTime getCreateTime() {

@@ -57,18 +57,20 @@ class OrderApplicationServiceTest {
         when(unavailable.status()).thenReturn(503);
         when(unavailable.getMessage()).thenReturn("inventory unavailable");
         when(inventory.reserve(any())).thenThrow(unavailable);
+        when(repository.markReservingForCompensation(eq(10L), any())).thenReturn(true);
         when(inventory.release(any())).thenReturn(InventoryReleaseResponse.released());
 
         OrderApplicationService.CreateOrderResult result = service.createPending(command);
 
         assertThat(result.state()).isEqualTo("COMPENSATED");
-        verify(repository).updateReservation(eq(10L), eq(ReservationStatus.COMPENSATED), any());
+        verify(repository).markCompensatedIfPending(eq(10L), any());
         verify(inventory).release(any());
     }
 
     @Test
     void failedCompensationLeavesAnExplicitRetryableState() {
         when(inventory.reserve(any())).thenReturn(InventoryReserveResponse.unknown("reserve result lost"));
+        when(repository.markReservingForCompensation(eq(10L), any())).thenReturn(true);
         when(inventory.release(any())).thenReturn(InventoryReleaseResponse.failed("inventory timeout"));
 
         OrderApplicationService.CreateOrderResult result = service.createPending(command);

@@ -1,0 +1,139 @@
+{
+  "fixtures": [
+    {
+      "orderId": "48664141333790724",
+      "runId": "52347a7c21e6401c97dfed5a6fc1eb12",
+      "reserved": {
+        "stock": 98,
+        "locked": 1
+      },
+      "before": {
+        "stock": 99,
+        "locked": 0
+      },
+      "skuId": 1004,
+      "userId": 109
+    }
+  ],
+  "recordedAtUtc": "2026-09-26T13:49:25.6158932Z",
+  "observations": [
+    {
+      "event": {
+        "status": 1,
+        "eventId": "9",
+        "leaseOwner": "98faa264-022b-42d3-ad3f-996438a6ecba",
+        "retryCount": 0,
+        "delaySeconds": 0,
+        "redriveCount": 0,
+        "updatedEpoch": 1790430471,
+        "databaseEpoch": 1790430471.921829,
+        "leaseUntilEpoch": 1790430531.620994
+      },
+      "stock": {
+        "stock": 98,
+        "locked": 0
+      },
+      "stage": "F06-before-lease-expiry"
+    },
+    {
+      "event": {
+        "status": 2,
+        "eventId": "9",
+        "leaseOwner": null,
+        "retryCount": 0,
+        "delaySeconds": -93,
+        "redriveCount": 0,
+        "updatedEpoch": 1790430564,
+        "databaseEpoch": 1790430565.221981,
+        "leaseUntilEpoch": null
+      },
+      "stock": {
+        "stock": 98,
+        "locked": 0
+      },
+      "stage": "F06-after-restart"
+    }
+  ],
+  "stage": "ConfirmCrash",
+  "passed": true,
+  "note": "Single-instance real HTTP faults; assertions do not establish multi-instance or production reliability.",
+  "case": "ConfirmCrash",
+  "checks": [
+    {
+      "name": "F06.proxy-starts-idle",
+      "passed": true
+    },
+    {
+      "name": "F06.no-unrelated-pending-confirmations",
+      "passed": true
+    },
+    {
+      "name": "F06.user-created",
+      "passed": true
+    },
+    {
+      "name": "F06.cart-ready",
+      "passed": true
+    },
+    {
+      "name": "F06.order-reserved",
+      "passed": true
+    },
+    {
+      "name": "F06.real-owned-order",
+      "passed": true
+    },
+    {
+      "name": "F06.single-unit-stock-reserved",
+      "passed": true
+    },
+    {
+      "name": "F06.payment-committed",
+      "passed": true
+    },
+    {
+      "name": "F06.inventory-confirmation-committed-response-held",
+      "passed": true
+    },
+    {
+      "name": "F06.crash-leaves-inflight-event-before-publisher-writeback",
+      "passed": true
+    },
+    {
+      "name": "F06.claim-used-default-sixty-second-lease",
+      "passed": true
+    },
+    {
+      "name": "F06.inventory-is-already-confirmed",
+      "passed": true
+    },
+    {
+      "name": "F06.first-confirmation-consumed-only-reserved-unit",
+      "passed": true
+    },
+    {
+      "name": "F06.actual-sixty-second-lease-expires-with-order-stopped",
+      "passed": true
+    },
+    {
+      "name": "F06.original-response-remains-held-through-lease-expiry",
+      "passed": true
+    },
+    {
+      "name": "F06.expired-claim-recovers-and-is-sent",
+      "passed": true
+    },
+    {
+      "name": "F06.confirmation-was-forwarded-again",
+      "passed": true
+    },
+    {
+      "name": "F06.duplicate-confirmation-does-not-deduct-again",
+      "passed": true
+    },
+    {
+      "name": "F06.original-order-and-single-reservation-stay-confirmed",
+      "passed": true
+    }
+  ]
+}

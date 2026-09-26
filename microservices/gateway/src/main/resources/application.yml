@@ -31,6 +31,11 @@ spring:
             - Path=/api/inventory/**
 
 gateway:
+  experimental:
+    # Unsafe legacy creation accepts caller-supplied user/price. This opt-in is NOT authorization.
+    # Only enable in an isolated local test environment; never on a consumer-facing gateway.
+    # JWT remains required. Commerce checkout and owned order actions do not need this switch.
+    legacy-order-create-enabled: ${GATEWAY_LEGACY_ORDER_CREATE_ENABLED:false}
   services:
     commerce-url: ${COMMERCE_SERVICE_URL:http://localhost:18084}
     order-url: ${ORDER_SERVICE_URL:http://localhost:18081}

@@ -8,10 +8,18 @@ V2 MVP 已新增 `commerce-service` 与 Vue 前端，并在本机完成商品、
 
 V2.1 继续补上用户主动取消和订单详情内的模拟支付，真实 HTTP 验收与剩余边界见 [`docs/v2-order-actions-evidence-2026-09-24.md`](docs/v2-order-actions-evidence-2026-09-24.md)。
 
+2026-09-26 增量已收敛消费者入口与订单号传输：商城用户通过 Commerce 的 `POST /api/checkout` 结算；Gateway 默认禁止历史实验用的 `POST /api/orders` 和 `POST /api/orders/redis`。微服务面向浏览器的响应中，非空 `orderId` 统一输出为 JSON 字符串，避免 JavaScript 长整数精度丢失；内部 Java `long`/`Long` 和数据库类型不变。本轮已验证隔离本地部署和三条真实浏览器主链：模拟支付、主动取消、Order 重启后的到期取消，并核对最终订单与库存；完整验收计划尚未全部执行，不代表生产可用，见 [本轮证据](docs/local-browser-acceptance-2026-09-26.md)。
+
+本轮微服务 Maven 构建运行 **145 项测试**，API 回归通过 **66 项断言**，小规模并发冒烟通过 **38 项断言**；三种口径分别统计，不合并称为全量测试或全部 P0/P1 通过。部署复用和安全停止方式见 [启动与验收说明](scripts/acceptance/README.md)。
+
+同日继续修复结果未知与中断恢复：结算先持久化原订单号/快照，再通过租约恢复；普通创建中断可安全取消补偿；支付事件写回增加租约归属校验；购物车按原行及版本清理，避免删除结算期间的新修改。此次全模块构建 **252 项测试通过**，故障验收及剩余边界单独记录在 [可靠性专项](docs/reliability-recovery-2026-09-26.md)，不覆盖上述第一轮记录，也不代表生产可用。
+
+最新闭环补验：**270 项后端测试、15 项前端测试及两端构建通过**；补验真实死信后的受控重驱、库存确认后发布器崩溃、释放失败补偿和浏览器账号切换。真实库存竞争发现缺行间隙锁死锁，修复后 30 个账号争抢 10 件得到 10 单成功、20 单明确拒绝、0 个基础故障；多 SKU 整体回滚通过。完整原始结果、修复前失败和复跑记录见 [闭环补验报告](docs/closure-acceptance-2026-09-26.md)。当前仍限本机单实例和模拟支付，Redis 独立专项、多实例及生产能力不在此次通过结论内。
+
 - 周期 1（旧文档简称 M0）：已完成并实测。连接池上限 20、300 个请求的一次复验中，普通先查后扣超卖 245 件，加本地事务后仍超卖 278 件，原子 SQL 超卖 0 件。
 - 周期 2（旧文档简称 M1）：已完成真实 Redis 端到端验收。2 秒超时订单自动取消，预占的 3 件库存完整释放，可售库存恢复且锁定库存归零。
 - 周期 3：已完成单体内的支付回调幂等、本地消息表、抢占发布、失败退避和库存确认消费。这里验证的是业务包边界和本地事务语义，不是独立服务部署。
-- 项目本地工具链已安装 Temurin JDK 17.0.20.1 和 Maven 3.9.16；MySQL 8.0.46、`fulfillment` 测试库和本机 Redis 服务均已就绪。
+- 早期周期使用 Temurin JDK 17.0.20.1、Maven 3.9.16、MySQL 8.0.46 和本机 Redis；这是历史实验环境，不代表当前依赖已就绪。本轮工具链与隔离部署说明见下文。
 - 周期 4：已完成真实 MySQL 对照。未排序基线 40 个事务中死锁回滚 20 个，死锁率 50%；按 `skuId` 排序后 40 个事务全部成功，死锁率 0%。
 - 周期 5：已完成 Redis Lua 多 SKU 原子预扣与幂等补偿、持久化命令异步落库、库存对账、双层令牌桶和 JMeter 三轮对比。全量 46 个测试通过。
 - 周期 6：已完成 Actuator、Prometheus 指标、Grafana 预置面板和应用内运行看板；Docker 实测 Prometheus 采集目标为 `UP`，Grafana 数据源和 `Fulfillment` 看板可自动加载。当前全量 47 个测试通过。
@@ -39,15 +47,17 @@ V2.1 继续补上用户主动取消和订单详情内的模拟支付，真实 HT
 
 ## 跑起来的顺序
 
-当前使用本机 `MySQL80` 服务。单体新环境可执行 `sql/schema.sql` 初始化；微服务升级时先完成周期 7–10 迁移，再执行 `microservices/sql/migration-cycle11.sql` 和 `migration-cycle11-split-schema.sql`，最后按示例创建最小权限账号。若使用 Docker，再运行 `docker compose up -d`。
+本轮商城已通过 [隔离部署脚本](scripts/acceptance/README.md) 完成五个后端与 Vue 开发服务器的本机验收，默认依赖端口为 MySQL `13306`、Redis `16379`，不复用或重置已有的 `3306`/`6379` 数据。脚本负责专用 Compose 项目、空库初始化和所有权检查；再次执行前先阅读复用与停止约束。运行元数据和当前 Windows 用户 DPAPI 加密凭证位于被忽略的 `.runtime/acceptance/`，不保存或提交明文凭证；该部署不是生产 Nginx 或公网部署。
+
+本机已发现的本轮工具链是 `D:\vibecoding\.toolchains\java17\jdk-17.0.20.1+1` 和 `D:\vibecoding\.toolchains\maven\apache-maven-3.9.11`。旧 `run-tests.ps1` 仍引用 `jdk-17` 和 Maven `3.9.16` 路径，在当前工具链布局下不可直接使用，本轮不修改或重跑单体脚本。微服务构建/测试应显式选用上述 JDK/Maven，并先确认运行配置和测试依赖；不要退回本机旧 Maven 3.6.1。
+
+以下为旧单体初始化与迁移说明，不是让现有环境重新执行初始化：单体全新空库可使用 `sql/schema.sql`；微服务旧环境的周期 7–11 迁移顺序见 `microservices/README.md`。初始化和种子脚本可能覆盖数据，升级已有环境前必须核对当前 schema、迁移和备份，不能直接重置演示库。
 
 启动应用或运行测试前，通过环境变量提供数据库密码：PowerShell 使用
 `$env:MYSQL_PASSWORD = '<你的本地密码>'`。Docker Compose 请先复制 `.env.example`
 为 `.env` 并填写 `MYSQL_ROOT_PASSWORD`；`.env` 已被 Git 忽略，不要提交真实密码。
 
-直接运行 `powershell -ExecutionPolicy Bypass -File .\run-tests.ps1`。脚本使用 `D:\vibecoding\.toolchains` 中的项目本地 JDK/Maven，不要求系统环境变量。
-
-先跑 `StockConcurrencyTest`：`naive_shouldOversell` 用于复现超卖，`atomic_shouldNotOversell` 要求超卖归零。再跑 `Cycle4DeadlockIntegrationTest`，它在真实 MySQL 上用两个反向 SKU 请求验证统一排序后的死锁次数。
+单体并发实验入口仍是 `StockConcurrencyTest` 和 `Cycle4DeadlockIntegrationTest`。前者的 `naive_shouldOversell` 用于复现超卖，`atomic_shouldNotOversell` 要求超卖归零；后者在真实 MySQL 上验证反向 SKU 加锁。执行前先准备专用实验库并修正工具链调用，测试会重置固定 SKU，不能对商城演示数据直接运行。
 
 本次实测数据和 MySQL 死锁日志摘要保存在 `docs/cycle4-evidence-2026-09-19.md`，
 Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`。
@@ -76,12 +86,17 @@ Redis 延迟关单验收记录保存在 `docs/redis-timeout-e2e-2026-09-19.md`�
 
 ## 微服务切片 HTTP 入口（Gateway 18080）
 
-- `POST /api/orders`：持久化订单与商品明细并编排库存预占；可传 `timeoutSeconds`，商品项包含 `skuId`、`spuId`、`count` 和 `price`。
-- `POST /api/orders/redis`：先持久化可靠命令，再由 Inventory Lua 原子预扣，返回 202 后后台异步创建订单。
-- `GET /api/orders/{orderId}`：查询订单主状态、预占状态和商品明细。
+- `POST /api/checkout`：消费者结算入口，携带登录凭证与 `Idempotency-Key`；Commerce 校验购物车和当前价格后，通过内部契约请求 Order 下单。
+- `GET /api/orders`、`GET /api/orders/{orderId}`：查询当前用户的订单列表、主状态、预占状态和商品明细。
+- `POST /api/orders/{orderId}/cancel`：取消本人待支付订单并触发库存释放。
+- `POST /api/payments/orders/{orderId}/mock-success`：本人订单的本地模拟支付，不产生真实扣款。
 - `POST /api/payments/callbacks/success`：支付成功回调，必须携带时间戳和 HMAC 签名。
 - `GET /api/inventory/skus/{skuId}`：查询库存。
-- `GET /api/inventory/reconciliation`：只读比较 MySQL、Redis 和尚未落库命令造成的预扣差异。
+- `GET /api/inventory/reconciliation`：只读比较 MySQL、Redis 和 Inventory 自有待落库预扣账本造成的差异。
+
+历史 `POST /api/orders` 与 `POST /api/orders/redis` 保留原有请求结构，但默认经 Gateway 返回 403。仅受控本地实验可显式设置 `GATEWAY_LEGACY_ORDER_CREATE_ENABLED=true`；开启后仍要求 JWT，但该开关不提供请求体用户/价格授权，不得面向普通消费者开放，详见 [`microservices/gateway/README.md`](microservices/gateway/README.md)。Redis 实验入口的 202 只表示命令已受理，预扣结果也可能尚未确认；当前商城结算不走该入口。
+
+结算、订单列表/详情、取消、支付和受控实验创建响应中的非空 `orderId` 为 JSON 字符串；未知结算的空订单号仍为 `null`。前端必须原样保留订单号，不转成 JavaScript `Number` 再拼接详情或操作 URL。该变化仅收敛浏览器传输契约，不改变内部 Java 订单号类型或数据库主键。
 
 库存预占、释放、确认及 Redis 预扣补偿只位于服务内部 `/internal/**`，需要 `X-Internal-Service-Token`。该切片尚未迁移双层令牌桶和业务看板。
 

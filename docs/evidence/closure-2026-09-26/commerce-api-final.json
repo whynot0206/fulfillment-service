@@ -1,0 +1,365 @@
+{
+  "runId": "efda1fe862234d848eb12e462d73be2a",
+  "startedAtUtc": "2026-09-26T13:51:51.8132646Z",
+  "finishedAtUtc": "2026-09-26T13:51:53.4004440Z",
+  "passed": true,
+  "stoppedAt": null,
+  "failureNote": null,
+  "selectedSkuId": 1005,
+  "users": [
+    {
+      "role": "owner",
+      "userId": "113"
+    },
+    {
+      "role": "other",
+      "userId": "114"
+    }
+  ],
+  "orders": [
+    {
+      "branch": "payment",
+      "orderId": "48664648458698752",
+      "totalAmount": 89.0
+    },
+    {
+      "branch": "cancel",
+      "orderId": "48664649402417153",
+      "totalAmount": 89.0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "register-a.http",
+      "passed": true,
+      "httpStatus": 201
+    },
+    {
+      "name": "register-b.http",
+      "passed": true,
+      "httpStatus": 201
+    },
+    {
+      "name": "registration.tokens-present",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "login-a.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "login.token-present",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "anonymous-cart-denied.http",
+      "passed": true,
+      "httpStatus": 401
+    },
+    {
+      "name": "legacy-disabled:/api/orders.http",
+      "passed": true,
+      "httpStatus": 403
+    },
+    {
+      "name": "legacy-disabled:/api/orders.code",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "legacy-disabled:/api/orders/redis.http",
+      "passed": true,
+      "httpStatus": 403
+    },
+    {
+      "name": "legacy-disabled:/api/orders/redis.code",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "anonymous-products.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "catalog.has-products",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "product-detail:3.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "catalog.has-listed-sku-with-two-units",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "add-payment-item.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "cart.one-selected-line",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "reject-amount-mismatch.http",
+      "passed": true,
+      "httpStatus": 409
+    },
+    {
+      "name": "amount-mismatch.code",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "no-order-after-price-rejection.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "price-rejection.created-no-order",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "checkout-payment.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "checkout-payment.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "checkout-payment.reserved",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "checkout-replay-after-cart-clear.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "checkout-replay.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "checkout-replay.same-order",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "checkout-key-reused-with-other-amount.http",
+      "passed": true,
+      "httpStatus": 409
+    },
+    {
+      "name": "checkout-key-reuse.conflict",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "payment-order-detail.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "payment-order-detail.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "payment-order.pending-and-snapshot",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "mock-payment-1.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "mock-payment-1.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "mock-payment-1.accepted",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "mock-payment-2.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "mock-payment-2.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "mock-payment-2.accepted",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "paid-order-detail.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "paid-order.final-state",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "paid-order-cannot-cancel.http",
+      "passed": true,
+      "httpStatus": 409
+    },
+    {
+      "name": "other-user-cannot-read.http",
+      "passed": true,
+      "httpStatus": 404
+    },
+    {
+      "name": "other-user-cannot-pay.http",
+      "passed": true,
+      "httpStatus": 404
+    },
+    {
+      "name": "other-user-cannot-cancel.http",
+      "passed": true,
+      "httpStatus": 404
+    },
+    {
+      "name": "add-cancel-item.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "checkout-cancel.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "checkout-cancel.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "checkout-cancel.reserved-and-independent",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "cancel-1.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "cancel-1.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "cancel-1.canceled",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "cancel-2.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "cancel-2.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "cancel-2.canceled",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "cancel-settlement-0.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "cancel.finally-compensated",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "canceled-order-cannot-pay.http",
+      "passed": true,
+      "httpStatus": 409
+    },
+    {
+      "name": "owner-order-list.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "owner-list.exactly-two-orders",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "owner-list-item.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "owner-list-item.orderId-is-exact-string",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "owner-list.exact-ids",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "owner-list.states-unchanged-by-negative-calls",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "other-user-order-list.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "other-user-list.empty",
+      "passed": true,
+      "httpStatus": null
+    },
+    {
+      "name": "cart-cleared-after-checkout.http",
+      "passed": true,
+      "httpStatus": 200
+    },
+    {
+      "name": "cart.empty",
+      "passed": true,
+      "httpStatus": null
+    }
+  ],
+  "scope": "Gateway HTTP only; inventory/Outbox database facts and browser behavior need separate verification.",
+  "retainedData": "Synthetic users and orders remain. A successful run pays for one unit and cancels one unit."
+}

@@ -1,0 +1,40 @@
+name: fulfillment-acceptance
+
+# Isolated local acceptance dependencies, not production deployment.
+# Always invoke through start-infra.ps1; it disables implicit .env loading.
+# No legacy SQL directory is mounted and no host 3306/6379 is reused.
+services:
+  mysql:
+    image: mysql:8.0.46
+    environment:
+      MYSQL_ROOT_PASSWORD: ${ACCEPTANCE_MYSQL_ROOT_PASSWORD:?Provide the acceptance root password in the process environment}
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:${ACCEPTANCE_MYSQL_PORT:-13306}:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-print-all-deadlocks=ON
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_ROOT_PASSWORD}\" mysqladmin ping --protocol=socket --user=root --silent"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 20s
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "127.0.0.1:${ACCEPTANCE_REDIS_PORT:-16379}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  mysql-data:
+  redis-data:

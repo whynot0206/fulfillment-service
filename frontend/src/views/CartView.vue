@@ -1,8 +1,9 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as api from '../api'
-import { currentCheckoutKey, rotateCheckoutKey } from '../api/checkout'
+import { currentCheckoutKey, rotateCheckoutKey, checkoutExpectedAmount, forgetCheckoutAmount } from '../api/checkout'
+import { session } from '../stores/session'
 import { money, spec, stockHint } from '../utils/format'
 
 const router = useRouter()
@@ -15,6 +16,25 @@ const busySkuId = ref(null)
 const submitting = ref(false)
 /** 幂等键已被绑到另一份载荷上，必须先确认再换新键，见下面 handleCheckoutError。 */
 const keyStuck = ref(false)
+const stuckKey = ref(null)
+let mounted = true
+let sessionRevision = 0
+// Synchronous invalidation also detects logout/login to the SAME account/token.
+watch(() => [session.userId, session.token], () => {
+  sessionRevision++
+  submitting.value = false
+  keyStuck.value = false
+  stuckKey.value = null
+}, { flush: 'sync' })
+onBeforeUnmount(() => { mounted = false })
+
+function checkoutContext() {
+  const userId = session.userId
+  const token = session.token
+  const revision = sessionRevision
+  return { userId, key: null, active: () => mounted && sessionRevision === revision
+    && session.userId === userId && session.token === token }
+}
 /**
  * 这次失败是否可能已经产生了订单。
  *
@@ -67,33 +87,41 @@ function remove(item) {
 }
 
 async function checkout() {
+  if (submitting.value || !cart.value) return
+  const context = checkoutContext()
   submitting.value = true
   error.value = ''
   warning.value = ''
   mayHaveOrdered.value = false
   try {
-    // expectedAmount 传后端自己算的 selectedAmount，不是前端把 price×quantity 加出来的。
-    // 这个字段的作用是「用户同意的金额」和「当前真实金额」的一致性检查；
-    // 如果前端自己算，浮点误差会让检查在价格没变的时候也失败。
-    const result = await api.submitCheckout(currentCheckoutKey(), cart.value.selectedAmount)
+    context.key = await currentCheckoutKey(context.userId)
+    if (!context.active()) return
+    const amount = await checkoutExpectedAmount(context.key, cart.value.selectedAmount, context.userId)
+    if (!context.active()) return
+    const result = await api.submitCheckout(context.key, amount)
+    // An old response may neither navigate the new account nor consume its intent.
+    if (!context.active()) return
 
     if (result.state === 'RESERVED') {
-      // 只有确定成功才换键。换键之前这次操作的重试都必须复用同一个键。
-      rotateCheckoutKey()
-      await router.push({ name: 'order-detail', params: { orderId: result.orderId } })
+      if (!await rotateCheckoutKey(context.userId, context.key, context.active) || !context.active()) return
+      await router.push({ name: 'order-detail', params: { orderId: result.orderId },
+        query: result.cartCleanupRequired ? { retainedCart: '1' } : {} })
       return
     }
 
-    // 200 但没预占上：库存不足（FAILED）或已回滚（COMPENSATED）。
-    // 这也是一个「确定的结果」——后端已经把这个键记成拒绝，同键再提交只会
-    // 拿回同样的失败，所以键也要换掉，否则用户改完购物车会撞 409。
-    rotateCheckoutKey()
-    warning.value = result.message || '下单失败，请稍后重试'
-    await load()
+    // Only explicit terminal outcomes close an intent. Unknown/future 200 states stay unresolved.
+    if (['FAILED', 'COMPENSATED', 'CANCELED', 'CLOSED'].includes(result.state)) {
+      if (!await rotateCheckoutKey(context.userId, context.key, context.active) || !context.active()) return
+      warning.value = result.message || '原订单已结束，请核对后再开始新结算'
+      await load()
+    } else {
+      mayHaveOrdered.value = true
+      warning.value = '原结算尚未确认，请保留原凭证并先查看订单'
+    }
   } catch (caught) {
-    handleCheckoutError(caught)
+    if (context.active()) await handleCheckoutError(caught, context)
   } finally {
-    submitting.value = false
+    if (context.active()) submitting.value = false
   }
 }
 
@@ -114,24 +142,30 @@ async function checkout() {
  *       用户得先去订单列表确认，再由他点一下继续。</li>
  * </ul>
  */
-function handleCheckoutError(caught) {
+async function handleCheckoutError(caught, context) {
   switch (caught.code) {
     case 'CHECKOUT_RESULT_UNKNOWN':
     case 'CHECKOUT_IN_PROGRESS':
+    case 'CHECKOUT_RECOVERY_REQUIRED':
     case 'NETWORK_ERROR':
       mayHaveOrdered.value = true
       warning.value = `${caught.message}（请先确认上一笔的去向，不要重复提交）`
       break
     case 'IDEMPOTENCY_KEY_REUSED':
       keyStuck.value = true
+      stuckKey.value = context.key
       mayHaveOrdered.value = true
       warning.value = '这次提交用的幂等键已经对应另一笔结算。请先确认上一笔是否已经生成订单。'
       break
     case 'PRICE_CHANGED':
+      await forgetCheckoutAmount(context.userId, context.key, context.active)
+      if (!context.active()) return
       warning.value = '商品价格已变化，已为你刷新，请确认新的合计金额后重新提交。'
       load()
       break
     case 'CART_EMPTY':
+      await forgetCheckoutAmount(context.userId, context.key, context.active)
+      if (!context.active()) return
       warning.value = '没有勾选任何商品。'
       load()
       break
@@ -139,6 +173,8 @@ function handleCheckoutError(caught) {
     case 'SKU_NOT_FOUND':
     case 'INSUFFICIENT_STOCK':
     case 'INVALID_QUANTITY':
+      await forgetCheckoutAmount(context.userId, context.key, context.active)
+      if (!context.active()) return
       warning.value = caught.message
       load()
       break
@@ -148,12 +184,25 @@ function handleCheckoutError(caught) {
 }
 
 /** 用户已经自己确认过上一笔的去向，换一把新键重新开始。 */
-function resetKeyAndRetry() {
-  rotateCheckoutKey()
-  keyStuck.value = false
-  mayHaveOrdered.value = false
-  warning.value = ''
-  return checkout()
+async function resetKeyAndRetry() {
+  if (submitting.value || !stuckKey.value) return
+  const context = checkoutContext()
+  context.key = stuckKey.value
+  submitting.value = true
+  let reset = false
+  try {
+    reset = await rotateCheckoutKey(context.userId, context.key, context.active)
+    if (!context.active() || !reset) return
+    keyStuck.value = false
+    stuckKey.value = null
+    mayHaveOrdered.value = false
+    warning.value = ''
+  } catch (caught) {
+    if (context.active()) warning.value = caught.message
+  } finally {
+    if (context.active()) submitting.value = false
+  }
+  if (context.active() && reset) return checkout()
 }
 
 onMounted(load)
@@ -173,7 +222,7 @@ onMounted(load)
         :to="{ name: 'orders' }"
         style="text-decoration: underline"
       >去「我的订单」查看</RouterLink>
-      <button v-if="keyStuck" style="margin-left: 10px" @click="resetKeyAndRetry">
+      <button v-if="keyStuck" :disabled="submitting" style="margin-left: 10px" @click="resetKeyAndRetry">
         已确认，重新下单
       </button>
     </div>
@@ -234,7 +283,7 @@ onMounted(load)
     </div>
 
     <div class="summary-bar">
-      <span class="muted">已选 {{ cart.selectedCount }} 件</span>
+      <span class="muted">已选 {{ cart.selectedCount }} 项</span>
       <span>合计</span>
       <span class="total">{{ money(cart.selectedAmount) }}</span>
       <button
@@ -247,8 +296,8 @@ onMounted(load)
     </div>
 
     <p class="muted" style="margin-top: 18px">
-      结算时服务端会用当前价格重新算一遍合计，和你屏幕上这个数对不上就会拒绝下单——
-      这不是在信任前端的算术，而是唯一能发现「你同意的价格已经变了」的办法。
+      首次结算会重新校验价格。结果未知后重试会继续核对原订单及原确认金额，
+      不会将后来修改的购物车当成另一笔订单；请先确认上一笔结果，再开始新结算。
     </p>
   </template>
 

@@ -77,6 +77,65 @@ public class OrderRepository {
                 ReservationStatus.RESERVING.code(), ReservationStatus.PENDING_COMPENSATION.code()) == 1;
     }
 
+    /** Commit a cancellation decision before releasing a reservation whose RPC outcome is unknown. */
+    @Transactional
+    public boolean markReservingForCompensation(long orderId, String error) {
+        return jdbcTemplate.update("""
+                UPDATE `order`
+                   SET status = ?, reservation_status = ?, reservation_error = ?,
+                       update_time = CURRENT_TIMESTAMP
+                 WHERE order_id = ? AND status = ? AND reservation_status = ?
+                """, OrderStatus.CANCELED.code(), ReservationStatus.PENDING_COMPENSATION.code(),
+                truncate(error), orderId, OrderStatus.PENDING_PAYMENT.code(),
+                ReservationStatus.RESERVING.code()) == 1;
+    }
+
+    /** Redis-owned orders are recovered by their durable command, never by this ordinary-order scan. */
+    public List<Long> findStaleReservingOrderIds(long graceSeconds, int limit) {
+        requireRecoveryGrace(graceSeconds);
+        if (limit < 1 || limit > 500) {
+            throw new IllegalArgumentException("recovery limit must be between 1 and 500");
+        }
+        return jdbcTemplate.queryForList("""
+                SELECT o.order_id FROM `order` o
+                 WHERE o.status = ? AND o.reservation_status = ?
+                   AND o.update_time <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? SECOND)
+                   AND NOT EXISTS (
+                       SELECT 1 FROM microservice_order_command c WHERE c.order_id = o.order_id
+                   )
+                 ORDER BY o.update_time, o.order_id LIMIT ?
+                """, Long.class, OrderStatus.PENDING_PAYMENT.code(),
+                ReservationStatus.RESERVING.code(), graceSeconds, limit);
+    }
+
+    /**
+     * Recheck every scan predicate while winning the order-row CAS. A stale scan must
+     * not cancel a newer RESERVED/PAID decision, a recently updated row or a Redis command.
+     * This local transaction commits before the caller attempts any inventory HTTP release.
+     */
+    @Transactional
+    public boolean markStaleReservingForCompensation(long orderId, long graceSeconds) {
+        requireRecoveryGrace(graceSeconds);
+        return jdbcTemplate.update("""
+                UPDATE `order` o
+                   SET o.status = ?, o.reservation_status = ?,
+                       o.reservation_error = 'reservation outcome unresolved past grace period; inventory release pending',
+                       o.update_time = CURRENT_TIMESTAMP
+                 WHERE o.order_id = ? AND o.status = ? AND o.reservation_status = ?
+                   AND o.update_time <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? SECOND)
+                   AND NOT EXISTS (
+                       SELECT 1 FROM microservice_order_command c WHERE c.order_id = o.order_id
+                   )
+                """, OrderStatus.CANCELED.code(), ReservationStatus.PENDING_COMPENSATION.code(),
+                orderId, OrderStatus.PENDING_PAYMENT.code(), ReservationStatus.RESERVING.code(), graceSeconds) == 1;
+    }
+
+    private static void requireRecoveryGrace(long graceSeconds) {
+        if (graceSeconds < 1 || graceSeconds > 7 * 24 * 60 * 60) {
+            throw new IllegalArgumentException("recovery grace must be between 1 second and 7 days");
+        }
+    }
+
     public List<Long> findPendingCompensationIds(int limit) {
         return jdbcTemplate.queryForList("""
                 SELECT order_id FROM `order`
@@ -153,71 +212,6 @@ public class OrderRepository {
                     """, Long.toString(orderId), "{\"orderId\":" + orderId + "}");
         }
         return updated == 1;
-    }
-
-    public List<Long> findReadyConfirmationEventIds(int limit) {
-        return jdbcTemplate.queryForList("""
-                SELECT event_id FROM order_outbox_event
-                 WHERE event_type = 'PAYMENT_CONFIRMED'
-                   AND status = 0 AND next_retry_time <= CURRENT_TIMESTAMP
-                 ORDER BY event_id LIMIT ?
-                """, Long.class, limit);
-    }
-
-    @Transactional
-    public Optional<Long> claimConfirmationEvent(long eventId) {
-        int claimed = jdbcTemplate.update("""
-                UPDATE order_outbox_event SET status = 1, update_time = CURRENT_TIMESTAMP
-                 WHERE event_id = ? AND status = 0 AND next_retry_time <= CURRENT_TIMESTAMP
-                """, eventId);
-        if (claimed != 1) {
-            return Optional.empty();
-        }
-        return jdbcTemplate.queryForList(
-                "SELECT CAST(biz_key AS UNSIGNED) FROM order_outbox_event WHERE event_id = ?",
-                Long.class, eventId).stream().findFirst();
-    }
-
-    public void markConfirmationSent(long eventId) {
-        jdbcTemplate.update("""
-                UPDATE order_outbox_event SET status = 2, last_error = NULL,
-                       update_time = CURRENT_TIMESTAMP WHERE event_id = ? AND status = 1
-                """, eventId);
-    }
-
-    public void retryConfirmation(long eventId, String error) {
-        jdbcTemplate.update("""
-                UPDATE order_outbox_event
-                   SET status = CASE WHEN retry_count >= 9 THEN 3 ELSE 0 END,
-                       retry_count = retry_count + 1,
-                       next_retry_time = DATE_ADD(CURRENT_TIMESTAMP,
-                           INTERVAL LEAST(300, POW(2, LEAST(retry_count, 8))) SECOND),
-                       last_error = ?, update_time = CURRENT_TIMESTAMP
-                 WHERE event_id = ? AND status = 1
-                """, truncate(error), eventId);
-    }
-
-    public void recoverStaleConfirmationClaims() {
-        jdbcTemplate.update("""
-                UPDATE order_outbox_event SET status = 0, update_time = CURRENT_TIMESTAMP
-                 WHERE event_type = 'PAYMENT_CONFIRMED' AND status = 1
-                   AND update_time < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 1 MINUTE)
-                """);
-    }
-
-    public Map<Integer, Long> countConfirmationEventsByStatus() {
-        return jdbcTemplate.query("""
-                SELECT status, COUNT(*) AS status_count
-                  FROM order_outbox_event
-                 WHERE event_type = 'PAYMENT_CONFIRMED'
-                 GROUP BY status
-                """, rs -> {
-            Map<Integer, Long> counts = new LinkedHashMap<>();
-            while (rs.next()) {
-                counts.put(rs.getInt("status"), rs.getLong("status_count"));
-            }
-            return counts;
-        });
     }
 
     public Optional<OrderRecord> find(long orderId) {

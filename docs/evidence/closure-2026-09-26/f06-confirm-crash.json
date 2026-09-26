@@ -1,0 +1,139 @@
+{
+  "note": "Single-instance real HTTP faults; assertions do not establish multi-instance or production reliability.",
+  "stage": "ConfirmCrash",
+  "case": "ConfirmCrash",
+  "recordedAtUtc": "2026-09-26T13:23:59.4716867Z",
+  "passed": true,
+  "checks": [
+    {
+      "name": "F06.proxy-starts-idle",
+      "passed": true
+    },
+    {
+      "name": "F06.no-unrelated-pending-confirmations",
+      "passed": true
+    },
+    {
+      "name": "F06.user-created",
+      "passed": true
+    },
+    {
+      "name": "F06.cart-ready",
+      "passed": true
+    },
+    {
+      "name": "F06.order-reserved",
+      "passed": true
+    },
+    {
+      "name": "F06.real-owned-order",
+      "passed": true
+    },
+    {
+      "name": "F06.single-unit-stock-reserved",
+      "passed": true
+    },
+    {
+      "name": "F06.payment-committed",
+      "passed": true
+    },
+    {
+      "name": "F06.inventory-confirmation-committed-response-held",
+      "passed": true
+    },
+    {
+      "name": "F06.crash-leaves-inflight-event-before-publisher-writeback",
+      "passed": true
+    },
+    {
+      "name": "F06.claim-used-default-sixty-second-lease",
+      "passed": true
+    },
+    {
+      "name": "F06.inventory-is-already-confirmed",
+      "passed": true
+    },
+    {
+      "name": "F06.first-confirmation-consumed-only-reserved-unit",
+      "passed": true
+    },
+    {
+      "name": "F06.actual-sixty-second-lease-expires-with-order-stopped",
+      "passed": true
+    },
+    {
+      "name": "F06.original-response-remains-held-through-lease-expiry",
+      "passed": true
+    },
+    {
+      "name": "F06.expired-claim-recovers-and-is-sent",
+      "passed": true
+    },
+    {
+      "name": "F06.confirmation-was-forwarded-again",
+      "passed": true
+    },
+    {
+      "name": "F06.duplicate-confirmation-does-not-deduct-again",
+      "passed": true
+    },
+    {
+      "name": "F06.original-order-and-single-reservation-stay-confirmed",
+      "passed": true
+    }
+  ],
+  "observations": [
+    {
+      "event": {
+        "status": 1,
+        "eventId": "6",
+        "leaseOwner": "6ab64a2f-24f7-4bb9-ac44-e6d86e68841e",
+        "retryCount": 0,
+        "delaySeconds": -1,
+        "redriveCount": 0,
+        "updatedEpoch": 1790428958,
+        "databaseEpoch": 1790428958.817983,
+        "leaseUntilEpoch": 1790429018.462852
+      },
+      "stock": {
+        "stock": 99,
+        "locked": 0
+      },
+      "stage": "F06-before-lease-expiry"
+    },
+    {
+      "event": {
+        "status": 2,
+        "eventId": "6",
+        "leaseOwner": null,
+        "retryCount": 0,
+        "delaySeconds": -81,
+        "redriveCount": 0,
+        "updatedEpoch": 1790429038,
+        "databaseEpoch": 1790429039.118592,
+        "leaseUntilEpoch": null
+      },
+      "stock": {
+        "stock": 99,
+        "locked": 0
+      },
+      "stage": "F06-after-restart"
+    }
+  ],
+  "fixtures": [
+    {
+      "userId": 11,
+      "reserved": {
+        "stock": 99,
+        "locked": 1
+      },
+      "skuId": 1004,
+      "runId": "96fa7f9a4974466f810f2e5bfd5720f2",
+      "orderId": "48660966744784899",
+      "before": {
+        "stock": 100,
+        "locked": 0
+      }
+    }
+  ]
+}

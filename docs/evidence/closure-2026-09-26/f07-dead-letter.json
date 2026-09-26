@@ -1,0 +1,234 @@
+{
+  "recordedAtUtc": "2026-09-26T13:21:52.5804348Z",
+  "stage": "FinishDeadLetter",
+  "note": "Single-instance real HTTP faults; assertions do not establish multi-instance or production reliability. Repeated polling assertions deduplicated by name/result, not counted as independent cases.",
+  "observations": [
+    {
+      "status": 0,
+      "eventId": "5",
+      "leaseOwner": null,
+      "retryCount": 1,
+      "delaySeconds": 2,
+      "redriveCount": 0,
+      "updatedEpoch": 1790428137,
+      "databaseEpoch": 1790428137.610677,
+      "leaseUntilEpoch": null
+    },
+    {
+      "status": 0,
+      "eventId": "5",
+      "leaseOwner": null,
+      "retryCount": 7,
+      "delaySeconds": 128,
+      "redriveCount": 0,
+      "updatedEpoch": 1790428263,
+      "databaseEpoch": 1790428341.117166,
+      "leaseUntilEpoch": null
+    },
+    {
+      "status": 0,
+      "eventId": "5",
+      "leaseOwner": null,
+      "retryCount": 8,
+      "delaySeconds": 256,
+      "redriveCount": 0,
+      "updatedEpoch": 1790428391,
+      "databaseEpoch": 1790428392.521069,
+      "leaseUntilEpoch": null
+    },
+    {
+      "status": 0,
+      "eventId": "5",
+      "leaseOwner": null,
+      "retryCount": 9,
+      "delaySeconds": 256,
+      "redriveCount": 0,
+      "updatedEpoch": 1790428647,
+      "databaseEpoch": 1790428648.806604,
+      "leaseUntilEpoch": null
+    },
+    {
+      "status": 3,
+      "eventId": "5",
+      "leaseOwner": null,
+      "retryCount": 10,
+      "delaySeconds": 256,
+      "redriveCount": 0,
+      "updatedEpoch": 1790428903,
+      "databaseEpoch": 1790428904.015358,
+      "leaseUntilEpoch": null
+    }
+  ],
+  "checks": [
+    {
+      "name": "F07.audit-retains-original-failure-generation",
+      "passed": true
+    },
+    {
+      "name": "F07.audited-redrive-applied-once",
+      "passed": true
+    },
+    {
+      "name": "F07.cart-ready",
+      "passed": true
+    },
+    {
+      "name": "F07.confirmation-consumes-no-second-available-unit",
+      "passed": true
+    },
+    {
+      "name": "F07.dead-letter-has-no-prior-redrive-audit",
+      "passed": true
+    },
+    {
+      "name": "F07.dead-letter-keeps-original-stock-lock",
+      "passed": true
+    },
+    {
+      "name": "F07.dependency-restored-before-maintenance",
+      "passed": true
+    },
+    {
+      "name": "F07.duplicate-maintenance-request-is-rejected",
+      "passed": true
+    },
+    {
+      "name": "F07.event-remains-in-original-generation",
+      "passed": true
+    },
+    {
+      "name": "F07.exactly-ten-confirmation-fault-hits",
+      "passed": true
+    },
+    {
+      "name": "F07.exactly-ten-real-failures-reach-dead-letter",
+      "passed": true
+    },
+    {
+      "name": "F07.failed-confirmation-keeps-inventory-locked",
+      "passed": true
+    },
+    {
+      "name": "F07.first-default-retry-observed",
+      "passed": true
+    },
+    {
+      "name": "F07.fixture-still-identifies-the-paid-order",
+      "passed": true
+    },
+    {
+      "name": "F07.no-unrelated-pending-confirmations",
+      "passed": true
+    },
+    {
+      "name": "F07.one-reservation-confirmed",
+      "passed": true
+    },
+    {
+      "name": "F07.order-reserved",
+      "passed": true
+    },
+    {
+      "name": "F07.payment-committed",
+      "passed": true
+    },
+    {
+      "name": "F07.proxy-starts-idle",
+      "passed": true
+    },
+    {
+      "name": "F07.real-owned-order",
+      "passed": true
+    },
+    {
+      "name": "F07.redriven-event-becomes-sent",
+      "passed": true
+    },
+    {
+      "name": "F07.reject-window-has-not-been-replaced",
+      "passed": true
+    },
+    {
+      "name": "F07.rejected-repeats-do-not-add-audit-or-change-generation",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-10-released-lease",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-10-uses-default-backoff",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-10-waited-previous-delay",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-7-released-lease",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-7-uses-default-backoff",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-8-released-lease",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-8-uses-default-backoff",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-8-waited-previous-delay",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-9-released-lease",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-9-uses-default-backoff",
+      "passed": true
+    },
+    {
+      "name": "F07.retry-9-waited-previous-delay",
+      "passed": true
+    },
+    {
+      "name": "F07.sent-event-cannot-be-redriven-with-new-generation",
+      "passed": true
+    },
+    {
+      "name": "F07.user-created",
+      "passed": true
+    },
+    {
+      "name": "F07.wrong-dead-letter-generation-is-rejected",
+      "passed": true
+    },
+    {
+      "name": "F07.wrong-generation-does-not-change-dead-letter",
+      "passed": true
+    }
+  ],
+  "case": "FinishDeadLetter",
+  "fixtures": [
+    {
+      "userId": 9,
+      "orderId": "48659245037518848",
+      "before": {
+        "stock": 98,
+        "locked": 0
+      },
+      "runId": "edac0ac173dc4fd9922729a4d4bb6d0b",
+      "reserved": {
+        "stock": 97,
+        "locked": 1
+      },
+      "skuId": 1005
+    }
+  ],
+  "passed": true
+}

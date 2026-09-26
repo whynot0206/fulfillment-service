@@ -1,0 +1,86 @@
+{
+  "case": "ReleaseFailure",
+  "checks": [
+    {
+      "name": "F04.proxy-starts-idle",
+      "passed": true
+    },
+    {
+      "name": "F04.user-created",
+      "passed": true
+    },
+    {
+      "name": "F04.cart-ready",
+      "passed": true
+    },
+    {
+      "name": "F04.order-reserved",
+      "passed": true
+    },
+    {
+      "name": "F04.real-owned-order",
+      "passed": true
+    },
+    {
+      "name": "F04.single-unit-stock-reserved",
+      "passed": true
+    },
+    {
+      "name": "F04.cancel-persists-despite-release-outage",
+      "passed": true
+    },
+    {
+      "name": "F04.cancellation-remains-pending-compensation",
+      "passed": true
+    },
+    {
+      "name": "F04.background-release-retry-also-failed",
+      "passed": true
+    },
+    {
+      "name": "F04.failure-does-not-pretend-stock-is-released",
+      "passed": true
+    },
+    {
+      "name": "F04.original-reservation-remains-locked",
+      "passed": true
+    },
+    {
+      "name": "F04.compensation-converges-after-dependency-restored",
+      "passed": true
+    },
+    {
+      "name": "F04.stock-restored-exactly-once",
+      "passed": true
+    },
+    {
+      "name": "F04.reservation-released-and-cancel-fence-retained",
+      "passed": true
+    },
+    {
+      "name": "F04.repeated-cancel-keeps-terminal-state",
+      "passed": true
+    }
+  ],
+  "stage": "ReleaseFailure",
+  "recordedAtUtc": "2026-09-26T13:50:15.7547667Z",
+  "note": "Single-instance real HTTP faults; assertions do not establish multi-instance or production reliability.",
+  "observations": [],
+  "fixtures": [
+    {
+      "reserved": {
+        "stock": 96,
+        "locked": 1
+      },
+      "orderId": "48664420039000069",
+      "skuId": 1003,
+      "before": {
+        "stock": 97,
+        "locked": 0
+      },
+      "userId": 110,
+      "runId": "b918618217a24875ad1fe4510c3eaba4"
+    }
+  ],
+  "passed": true
+}

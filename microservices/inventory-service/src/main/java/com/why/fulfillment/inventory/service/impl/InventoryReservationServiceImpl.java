@@ -14,6 +14,7 @@ import com.why.fulfillment.inventory.service.InventorySkuNotFoundException;
 import com.why.fulfillment.inventory.service.InventoryStockException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -38,12 +39,16 @@ public class InventoryReservationServiceImpl implements InventoryReservationServ
     }
 
     /**
-     * Reserves all rows in one local transaction.  Lock rows are inserted in
-     * SKU order before their stock rows are updated, so reserve, release, and
-     * confirm all acquire their database locks in the same order.
+     * Reserves all rows in one local transaction, taking the order's fence first
+     * and then visiting SKU rows in ascending order. READ_COMMITTED is deliberate:
+     * under REPEATABLE_READ an absent-order FOR UPDATE range can gap-lock the
+     * shared order/SKU index and deadlock with a different order's subsequent insert.
+     * The existing fence, current reads, unique key and conditional stock updates
+     * still protect same-order idempotency and inventory under READ_COMMITTED.
+     * This avoids that gap-lock cycle; SKU ordering is not a blanket deadlock guarantee.
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public void reserve(Long orderId, List<InventoryReserveItem> items) {
         requirePositive(orderId, "orderId");
         List<ReservationLine> requested = normalize(items);
@@ -106,7 +111,7 @@ public class InventoryReservationServiceImpl implements InventoryReservationServ
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public void release(Long orderId) {
         requirePositive(orderId, "orderId");
         fenceMapper.ensureExists(orderId);
@@ -137,7 +142,7 @@ public class InventoryReservationServiceImpl implements InventoryReservationServ
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public void confirm(Long orderId) {
         requirePositive(orderId, "orderId");
         fenceMapper.ensureExists(orderId);

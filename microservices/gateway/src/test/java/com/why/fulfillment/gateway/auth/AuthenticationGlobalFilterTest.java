@@ -1,6 +1,8 @@
 package com.why.fulfillment.gateway.auth;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -40,7 +42,7 @@ class AuthenticationGlobalFilterTest {
     private static final String[] ANONYMOUS_PATHS = {"/api/auth/**", "/api/products/**"};
 
     private final JwtTokenVerifier verifier = new JwtTokenVerifier(TEST_SECRET, "fulfillment-commerce");
-    private final AuthenticationGlobalFilter filter = new AuthenticationGlobalFilter(verifier, ANONYMOUS_PATHS);
+    private final AuthenticationGlobalFilter filter = new AuthenticationGlobalFilter(verifier, ANONYMOUS_PATHS, false);
 
     @Test
     void verifiesTheSharedTestVector() {
@@ -67,7 +69,7 @@ class AuthenticationGlobalFilterTest {
     @Test
     void overwritesClientSuppliedUserIdHeader() {
         MockServerWebExchange exchange = MockServerWebExchange.from(
-                MockServerHttpRequest.post("/api/orders")
+                MockServerHttpRequest.get("/api/orders")
                         .header(AuthenticationGlobalFilter.USER_ID_HEADER, "999")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + SHARED_TEST_TOKEN));
 
@@ -125,6 +127,79 @@ class AuthenticationGlobalFilterTest {
 
         assertThat(forwarded.get()).isNull();
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/orders", "/api/orders/", "/api/orders/redis", "/api/orders/redis/",
+            "/api/orders;test=1", "/api/orders/redis;test=1", "/api/orders/ignored/..",
+            "/api/orders/ignored/../redis", "/api/orders/redis/."})
+    void rejectsLegacyCreationByDefaultEvenForAuthenticatedConsumers(String path) {
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + SHARED_TEST_TOKEN)
+                        .header("X-User-Id", "999")
+                        .header("X-Internal-Service-Token", "forged")
+                        .body("{\"userId\":999,\"totalAmount\":0.01}"));
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+
+        filter.filter(exchange, recording(forwarded)).block();
+
+        assertThat(forwarded.get()).isNull();
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(exchange.getResponse().getBodyAsString().block()).contains("LEGACY_ORDER_ENTRY_DISABLED");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/orders", "/api/orders/12"})
+    void legacyCreationGateDoesNotBlockOwnedOrderReads(String path) {
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + SHARED_TEST_TOKEN));
+
+        assertThat(capture(exchange).getRequest().getHeaders().getFirst("X-User-Id")).isEqualTo("7");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/checkout", "/api/orders/12/cancel", "/api/payments/orders/12/mock-success"})
+    void legacyCreationGateDoesNotBlockCheckoutOrOwnedOrderActions(String path) {
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + SHARED_TEST_TOKEN));
+
+        assertThat(capture(exchange).getRequest().getHeaders().getFirst("X-User-Id")).isEqualTo("7");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/orders", "/api/orders/redis"})
+    void experimentOptInStillRequiresAuthenticationEvenWithAnonymousWildcard(String path) {
+        AuthenticationGlobalFilter experimentalFilter =
+                new AuthenticationGlobalFilter(verifier, new String[]{"/api/**"}, true);
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.post(path));
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+
+        experimentalFilter.filter(exchange, recording(forwarded)).block();
+
+        assertThat(forwarded.get()).isNull();
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/orders", "/api/orders/redis"})
+    void explicitExperimentOptInKeepsTrustedHeaderHandling(String path) {
+        AuthenticationGlobalFilter experimentalFilter =
+                new AuthenticationGlobalFilter(verifier, ANONYMOUS_PATHS, true);
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + SHARED_TEST_TOKEN)
+                        .header("X-User-Id", "999")
+                        .header("X-Internal-Service-Token", "forged"));
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+
+        experimentalFilter.filter(exchange, recording(forwarded)).block();
+
+        assertThat(forwarded.get()).isNotNull();
+        assertThat(forwarded.get().getRequest().getHeaders().getFirst("X-User-Id")).isEqualTo("7");
+        assertThat(forwarded.get().getRequest().getHeaders().containsKey("X-Internal-Service-Token")).isFalse();
     }
 
     private ServerWebExchange capture(MockServerWebExchange exchange) {

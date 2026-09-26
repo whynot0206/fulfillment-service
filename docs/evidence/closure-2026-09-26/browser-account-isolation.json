@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "orders": [
+    {
+      "kind": "order",
+      "amount": 129.0,
+      "locked": 0,
+      "status": 3,
+      "userId": "3",
+      "created": "2026-09-26 21:14:13.000000",
+      "orderId": "48659910354796545",
+      "intentAmount": 129.0,
+      "checkoutStatus": 1,
+      "userOrderCount": 5,
+      "cleanupRequired": 1,
+      "reservationStatus": 3
+    },
+    {
+      "kind": "order",
+      "amount": 129.0,
+      "locked": 0,
+      "status": 3,
+      "userId": "10",
+      "created": "2026-09-26 21:15:18.000000",
+      "orderId": "48660046522875906",
+      "intentAmount": 129.0,
+      "checkoutStatus": 1,
+      "userOrderCount": 1,
+      "cleanupRequired": 0,
+      "reservationStatus": 3
+    }
+  ],
+  "readOnly": true,
+  "recordedAtUtc": "2026-09-26T13:16:42.9063501Z",
+  "flow": "A unknown, B separate checkout and cancel, A login and reload returns original order then cancel"
+}

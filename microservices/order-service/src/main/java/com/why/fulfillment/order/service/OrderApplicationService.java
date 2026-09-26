@@ -1,5 +1,8 @@
 package com.why.fulfillment.order.service;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+
 import com.why.fulfillment.api.inventory.InventoryClient;
 import com.why.fulfillment.api.inventory.InventoryReleaseRequest;
 import com.why.fulfillment.api.inventory.InventoryReleaseResponse;
@@ -104,7 +107,9 @@ public class OrderApplicationService {
             if (isDeterministicClientRejection(exception)) {
                 String error = "inventory rejected the request (HTTP " + exception.status() + "): "
                         + safeMessage(exception);
-                orderRepository.updateReservation(normalized.orderId(), ReservationStatus.FAILED, error);
+                if (!orderRepository.updateReservation(normalized.orderId(), ReservationStatus.FAILED, error)) {
+                    return resultAfterLostDecision(normalized.orderId(), replayed);
+                }
                 return CreateOrderResult.failed(normalized.orderId(), error, replayed);
             }
             return compensateUnknown(normalized.orderId(), describeRemoteFailure(exception), replayed);
@@ -128,17 +133,64 @@ public class OrderApplicationService {
      * only answer that cannot silently overcharge.</p>
      */
     public CreateOrderResult createFromCommerce(OrderCreateRequest request) {
+        return createPending(commerceCommand(request));
+    }
+
+    /**
+     * Resolve a saved Commerce snapshot without creating an order or calling Inventory.
+     * Main-order terminal states take precedence over an old reservation snapshot, while
+     * outstanding compensation remains explicit so the caller can wait for convergence.
+     */
+    public CreateOrderResult resolveCreateFromCommerce(OrderCreateRequest request) {
+        CreateOrderCommand command = commerceCommand(request);
+        validate(command);
+        CreateOrderCommand normalized = normalize(command);
+        OrderRecord existing = orderRepository.find(normalized.orderId()).orElse(null);
+        if (existing == null) {
+            return new CreateOrderResult(normalized.orderId(), "NOT_FOUND", "order is not present", false);
+        }
+        if (!samePayload(existing, normalized)) {
+            return CreateOrderResult.conflict(normalized.orderId(),
+                    "orderId already exists with a different request payload");
+        }
+        if (existing.status() == OrderStatus.PAID) {
+            return new CreateOrderResult(existing.orderId(), "PAID", "order is paid", true);
+        }
+        if (existing.reservationStatus() == ReservationStatus.PENDING_COMPENSATION) {
+            return CreateOrderResult.pendingCompensation(existing.orderId(),
+                    "existing request is waiting for compensation", true);
+        }
+        if (existing.status() == OrderStatus.CLOSED) {
+            return new CreateOrderResult(existing.orderId(), "CLOSED", "order is closed", true);
+        }
+        if (existing.status() == OrderStatus.CANCELED
+                && existing.reservationStatus() != ReservationStatus.FAILED
+                && existing.reservationStatus() != ReservationStatus.COMPENSATED) {
+            return new CreateOrderResult(existing.orderId(), "CANCELED", "order is canceled", true);
+        }
+        CreateOrderResult settled = resultForExisting(existing);
+        return settled == null
+                ? new CreateOrderResult(existing.orderId(), "RESERVING", "reservation is unresolved", true)
+                : settled;
+    }
+
+    private static CreateOrderCommand commerceCommand(OrderCreateRequest request) {
         if (request == null || request.orderId() == null || request.userId() == null
                 || request.items() == null || request.items().isEmpty()) {
             throw new IllegalArgumentException("orderId, userId and at least one item are required");
         }
         List<OrderItemCommand> items = request.items().stream()
-                .map(item -> new OrderItemCommand(item.skuId(), item.spuId(), item.count(), item.price(),
-                        item.nameSnapshot(), item.specSnapshot()))
+                .map(item -> {
+                    if (item == null) {
+                        throw new IllegalArgumentException("each item is required");
+                    }
+                    return new OrderItemCommand(item.skuId(), item.spuId(), item.count(), item.price(),
+                            item.nameSnapshot(), item.specSnapshot());
+                })
                 .toList();
         requireTotalMatchesItems(request.totalAmount(), items);
-        return createPending(new CreateOrderCommand(request.orderId(), request.userId(),
-                request.totalAmount(), request.timeoutSeconds(), items));
+        return new CreateOrderCommand(request.orderId(), request.userId(),
+                request.totalAmount(), request.timeoutSeconds(), items);
     }
 
     private static void requireTotalMatchesItems(BigDecimal declaredTotal, List<OrderItemCommand> items) {
@@ -247,6 +299,22 @@ public class OrderApplicationService {
                 orderRepository.countByUser(userId), safePage, safeSize);
     }
 
+    /**
+     * Expire an unresolved ordinary reservation, not a payment deadline. The repository
+     * transaction decides cancellation first; no transaction is kept open across Feign.
+     * A crash after that commit leaves a PENDING_COMPENSATION row for the existing worker.
+     */
+    public boolean recoverStaleReservation(long orderId, long graceSeconds) {
+        if (orderId <= 0) {
+            throw new IllegalArgumentException("positive orderId is required");
+        }
+        if (!orderRepository.markStaleReservingForCompensation(orderId, graceSeconds)) {
+            return false;
+        }
+        retryPendingCompensation(orderId);
+        return true;
+    }
+
     public void retryPendingCompensation(long orderId) {
         try {
             InventoryReleaseResponse response = inventoryClient.release(new InventoryReleaseRequest(orderId));
@@ -264,10 +332,15 @@ public class OrderApplicationService {
     }
 
     private CreateOrderResult compensateUnknown(long orderId, String reason, boolean replayed) {
+        // A duplicate request may already have committed RESERVED (or even PAID).
+        // Only a caller that first wins the cancellation CAS may initiate release.
+        if (!orderRepository.markReservingForCompensation(orderId, reason)) {
+            return resultAfterLostDecision(orderId, replayed);
+        }
         try {
             InventoryReleaseResponse response = inventoryClient.release(new InventoryReleaseRequest(orderId));
             if (isReleased(response)) {
-                orderRepository.updateReservation(orderId, ReservationStatus.COMPENSATED,
+                orderRepository.markCompensatedIfPending(orderId,
                         reason + "; compensation released inventory");
                 return CreateOrderResult.compensated(orderId,
                         "inventory result was unknown; reservation was canceled", replayed);
@@ -283,6 +356,15 @@ public class OrderApplicationService {
             return CreateOrderResult.pendingCompensation(orderId,
                     "inventory result was unknown; compensation is scheduled", replayed);
         }
+    }
+
+    private CreateOrderResult resultAfterLostDecision(long orderId, boolean replayed) {
+        OrderRecord current = orderRepository.find(orderId)
+                .orElseThrow(() -> new IllegalStateException("order disappeared while settling reservation"));
+        CreateOrderResult settled = resultForExisting(current);
+        return settled == null
+                ? CreateOrderResult.pendingCompensation(orderId, "reservation result is still being settled", replayed)
+                : settled;
     }
 
     private static CreateOrderCommand normalize(CreateOrderCommand command) {
@@ -359,8 +441,14 @@ public class OrderApplicationService {
     }
 
     private static String safeMessage(Throwable exception) {
-        String message = exception.getMessage();
-        return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
+        // These summaries are persisted and exposed in order details. Feign messages
+        // can contain downstream URLs, response bodies and credentials; never store them.
+        String type = exception.getClass().getSimpleName();
+        if (type.isBlank()) {
+            type = "RuntimeException";
+        }
+        return exception instanceof FeignException remote
+                ? type + " (HTTP " + remote.status() + ")" : type;
     }
 
     private static void validate(CreateOrderCommand command) {
@@ -408,7 +496,7 @@ public class OrderApplicationService {
     public record OrderPage(List<OrderRecord> orders, long total, int page, int size) {
     }
 
-    public record CancelOrderResult(long orderId, String state) {
+    public record CancelOrderResult(@JsonSerialize(using = ToStringSerializer.class) long orderId, String state) {
     }
 
     public record CreateOrderCommand(long orderId, long userId, BigDecimal totalAmount, Long timeoutSeconds,
@@ -431,7 +519,8 @@ public class OrderApplicationService {
         }
     }
 
-    public record CreateOrderResult(long orderId, String state, String message, boolean replayed) {
+    public record CreateOrderResult(@JsonSerialize(using = ToStringSerializer.class) long orderId,
+                                    String state, String message, boolean replayed) {
         static CreateOrderResult reserved(long orderId, boolean replayed) {
             return new CreateOrderResult(orderId, "RESERVED", "inventory reserved", replayed);
         }

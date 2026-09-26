@@ -74,7 +74,7 @@ class OrderControllerTest {
 
         mvc.perform(get("/api/orders/10").header("X-User-Id", "20"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.orderId").value(10));
+                .andExpect(jsonPath("$.orderId").value("10"));
 
         // Same order id, different caller: 404, not 403 — a 403 would confirm the id exists.
         mvc.perform(get("/api/orders/10").header("X-User-Id", "21"))
@@ -101,7 +101,7 @@ class OrderControllerTest {
         mvc.perform(get("/api/orders").header("X-User-Id", "20").param("page", "2").param("size", "5"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(11))
-                .andExpect(jsonPath("$.orders[0].orderId").value(10));
+                .andExpect(jsonPath("$.orders[0].orderId").value("10"));
     }
 
     @Test

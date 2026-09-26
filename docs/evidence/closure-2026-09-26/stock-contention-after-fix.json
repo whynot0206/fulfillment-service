@@ -1,0 +1,1263 @@
+{
+  "runId": "10b28565b2ce4abdb4acd558e59320ae",
+  "project": "fulfillment-acceptance",
+  "passed": true,
+  "stoppedAt": null,
+  "startedAtUtc": "2026-09-26T13:40:41.4999966Z",
+  "finishedAtUtc": "2026-09-26T13:41:39.1599071Z",
+  "scope": "C01/N06/N07 single-instance real HTTP and MySQL; no business SQL writes or capacity claim",
+  "counts": {
+    "success": 10,
+    "unknownOrInfrastructure": 0,
+    "businessRejected": 20
+  },
+  "baseline": [
+    {
+      "skuId": 1001,
+      "stock": 97,
+      "locked": 0,
+      "activeLocks": 0
+    },
+    {
+      "skuId": 1002,
+      "stock": 100,
+      "locked": 0,
+      "activeLocks": 0
+    }
+  ],
+  "finalStock": [
+    {
+      "skuId": 1001,
+      "stock": 97,
+      "locked": 0,
+      "activeLocks": 0
+    },
+    {
+      "skuId": 1002,
+      "stock": 100,
+      "locked": 0,
+      "activeLocks": 0
+    }
+  ],
+  "cleanupSettled": true,
+  "proxyRestored": true,
+  "syntheticUsers": 31,
+  "checkoutResponses": [
+    {
+      "userId": "47",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-1",
+      "orderId": "48663253768732673"
+    },
+    {
+      "userId": "48",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-2",
+      "orderId": "48663253812772870"
+    },
+    {
+      "userId": "49",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-3",
+      "orderId": "48663253816967177"
+    },
+    {
+      "userId": "50",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-4",
+      "orderId": "48663253821161483"
+    },
+    {
+      "userId": "51",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-5",
+      "orderId": "48663253825355788"
+    },
+    {
+      "userId": "52",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-6",
+      "orderId": "48663253842133013"
+    },
+    {
+      "userId": "53",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-7",
+      "orderId": "48663253800189954"
+    },
+    {
+      "userId": "54",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-8",
+      "orderId": "48663253812772871"
+    },
+    {
+      "userId": "55",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-9",
+      "orderId": "48663253812772869"
+    },
+    {
+      "userId": "56",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-10",
+      "orderId": "48663253812772868"
+    },
+    {
+      "userId": "57",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-11",
+      "orderId": "48663253842133012"
+    },
+    {
+      "userId": "58",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-12",
+      "orderId": "48663253835841550"
+    },
+    {
+      "userId": "59",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-13",
+      "orderId": "48663253835841552"
+    },
+    {
+      "userId": "60",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-14",
+      "orderId": "48663253816967176"
+    },
+    {
+      "userId": "61",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-15",
+      "orderId": "48663253867298845"
+    },
+    {
+      "userId": "62",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-16",
+      "orderId": "48663253863104539"
+    },
+    {
+      "userId": "63",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-17",
+      "orderId": "48663253863104540"
+    },
+    {
+      "userId": "64",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-18",
+      "orderId": "48663253835841553"
+    },
+    {
+      "userId": "65",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-19",
+      "orderId": "48663253848424470"
+    },
+    {
+      "userId": "66",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-20",
+      "orderId": "48663253867298846"
+    },
+    {
+      "userId": "67",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-21",
+      "orderId": "48663253840035859"
+    },
+    {
+      "userId": "68",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-22",
+      "orderId": "48663253861007383"
+    },
+    {
+      "userId": "69",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-23",
+      "orderId": "48663253835841554"
+    },
+    {
+      "userId": "70",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-24",
+      "orderId": "48663253861007386"
+    },
+    {
+      "userId": "71",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-25",
+      "orderId": "48663253861007384"
+    },
+    {
+      "userId": "72",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-26",
+      "orderId": "48663253819064330"
+    },
+    {
+      "userId": "73",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-27",
+      "orderId": "48663253835841551"
+    },
+    {
+      "userId": "74",
+      "code": null,
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "classification": "success",
+      "request": "race-28",
+      "orderId": "48663253812772867"
+    },
+    {
+      "userId": "75",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-29",
+      "orderId": "48663253861007385"
+    },
+    {
+      "userId": "76",
+      "code": null,
+      "httpStatus": 200,
+      "state": "FAILED",
+      "classification": "businessRejected",
+      "request": "race-30",
+      "orderId": "48663253835841549"
+    }
+  ],
+  "multiSkuRollback": [
+    {
+      "releaseRequestedAtMs": 214,
+      "lastFault": {
+        "sequence": 14,
+        "mode": "hold-before",
+        "path": "/internal/inventory/reserve",
+        "completed": true,
+        "upstreamStatus": 200,
+        "businessStatus": "REJECTED"
+      },
+      "insertionOrder": [
+        1001,
+        1002
+      ],
+      "windowMissed": false,
+      "orderId": "48663291876081695",
+      "orderStatus": 3,
+      "faultSequence": 14,
+      "reservationStatus": 4,
+      "stock": [
+        {
+          "skuId": 1001,
+          "stock": 97,
+          "locked": 0,
+          "activeLocks": 0
+        },
+        {
+          "skuId": 1002,
+          "stock": 0,
+          "locked": 100,
+          "activeLocks": 100
+        }
+      ],
+      "round": 1,
+      "lockRows": 0,
+      "heldObservedAtMs": 94,
+      "releaseCompletedAtMs": 216
+    },
+    {
+      "releaseRequestedAtMs": 222,
+      "lastFault": {
+        "sequence": 15,
+        "mode": "hold-before",
+        "path": "/internal/inventory/reserve",
+        "completed": true,
+        "upstreamStatus": 200,
+        "businessStatus": "REJECTED"
+      },
+      "insertionOrder": [
+        1002,
+        1001
+      ],
+      "windowMissed": false,
+      "orderId": "48663297584529441",
+      "orderStatus": 3,
+      "faultSequence": 15,
+      "reservationStatus": 4,
+      "stock": [
+        {
+          "skuId": 1001,
+          "stock": 97,
+          "locked": 0,
+          "activeLocks": 0
+        },
+        {
+          "skuId": 1002,
+          "stock": 0,
+          "locked": 100,
+          "activeLocks": 100
+        }
+      ],
+      "round": 2,
+      "lockRows": 0,
+      "heldObservedAtMs": 103,
+      "releaseCompletedAtMs": 224
+    }
+  ],
+  "cleanup": [
+    {
+      "userId": "46",
+      "fact": {
+        "orderId": "48663252332183552",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "holder"
+    },
+    {
+      "userId": "47",
+      "fact": {
+        "orderId": "48663253768732673",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-1"
+    },
+    {
+      "userId": "48",
+      "fact": {
+        "orderId": "48663253812772870",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-2"
+    },
+    {
+      "userId": "49",
+      "fact": {
+        "orderId": "48663253816967177",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-3"
+    },
+    {
+      "userId": "50",
+      "fact": {
+        "orderId": "48663253821161483",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-4"
+    },
+    {
+      "userId": "51",
+      "fact": {
+        "orderId": "48663253825355788",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-5"
+    },
+    {
+      "userId": "52",
+      "fact": {
+        "orderId": "48663253842133013",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-6"
+    },
+    {
+      "userId": "53",
+      "fact": {
+        "orderId": "48663253800189954",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-7"
+    },
+    {
+      "userId": "54",
+      "fact": {
+        "orderId": "48663253812772871",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-8"
+    },
+    {
+      "userId": "55",
+      "fact": {
+        "orderId": "48663253812772869",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-9"
+    },
+    {
+      "userId": "56",
+      "fact": {
+        "orderId": "48663253812772868",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-10"
+    },
+    {
+      "userId": "57",
+      "fact": {
+        "orderId": "48663253842133012",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-11"
+    },
+    {
+      "userId": "58",
+      "fact": {
+        "orderId": "48663253835841550",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-12"
+    },
+    {
+      "userId": "59",
+      "fact": {
+        "orderId": "48663253835841552",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-13"
+    },
+    {
+      "userId": "60",
+      "fact": {
+        "orderId": "48663253816967176",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-14"
+    },
+    {
+      "userId": "61",
+      "fact": {
+        "orderId": "48663253867298845",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-15"
+    },
+    {
+      "userId": "62",
+      "fact": {
+        "orderId": "48663253863104539",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-16"
+    },
+    {
+      "userId": "63",
+      "fact": {
+        "orderId": "48663253863104540",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-17"
+    },
+    {
+      "userId": "64",
+      "fact": {
+        "orderId": "48663253835841553",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-18"
+    },
+    {
+      "userId": "65",
+      "fact": {
+        "orderId": "48663253848424470",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-19"
+    },
+    {
+      "userId": "66",
+      "fact": {
+        "orderId": "48663253867298846",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-20"
+    },
+    {
+      "userId": "67",
+      "fact": {
+        "orderId": "48663253840035859",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-21"
+    },
+    {
+      "userId": "68",
+      "fact": {
+        "orderId": "48663253861007383",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-22"
+    },
+    {
+      "userId": "69",
+      "fact": {
+        "orderId": "48663253835841554",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-23"
+    },
+    {
+      "userId": "70",
+      "fact": {
+        "orderId": "48663253861007386",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-24"
+    },
+    {
+      "userId": "71",
+      "fact": {
+        "orderId": "48663253861007384",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-25"
+    },
+    {
+      "userId": "72",
+      "fact": {
+        "orderId": "48663253819064330",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-26"
+    },
+    {
+      "userId": "73",
+      "fact": {
+        "orderId": "48663253835841551",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-27"
+    },
+    {
+      "userId": "74",
+      "fact": {
+        "orderId": "48663253812772867",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "race-28"
+    },
+    {
+      "userId": "75",
+      "fact": {
+        "orderId": "48663253861007385",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-29"
+    },
+    {
+      "userId": "76",
+      "fact": {
+        "orderId": "48663253835841549",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "race-30"
+    },
+    {
+      "userId": "47",
+      "fact": {
+        "orderId": "48663291876081695",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "multi-1"
+    },
+    {
+      "userId": "48",
+      "fact": {
+        "orderId": "48663292054339616",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "drain-1"
+    },
+    {
+      "userId": "47",
+      "fact": {
+        "orderId": "48663297584529441",
+        "allLocks": 0,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 2,
+        "confirmedLocks": 0,
+        "reservationStatus": 4
+      },
+      "label": "multi-2"
+    },
+    {
+      "userId": "48",
+      "fact": {
+        "orderId": "48663297781661730",
+        "allLocks": 1,
+        "activeLocks": 0,
+        "orderStatus": 3,
+        "checkoutStatus": 1,
+        "confirmedLocks": 0,
+        "reservationStatus": 3
+      },
+      "label": "drain-2"
+    }
+  ],
+  "assertions": [
+    {
+      "passed": true,
+      "name": "proxy-18881-starts-without-existing-fault-or-held-traffic"
+    },
+    {
+      "passed": true,
+      "name": "proxy-18882-starts-without-existing-fault-or-held-traffic"
+    },
+    {
+      "passed": true,
+      "name": "fixed-fixture-has-primary-100-secondary-at-least-one-and-no-locks"
+    },
+    {
+      "passed": true,
+      "name": "register-0"
+    },
+    {
+      "passed": true,
+      "name": "cart-0"
+    },
+    {
+      "passed": true,
+      "name": "register-1"
+    },
+    {
+      "passed": true,
+      "name": "cart-1"
+    },
+    {
+      "passed": true,
+      "name": "register-2"
+    },
+    {
+      "passed": true,
+      "name": "cart-2"
+    },
+    {
+      "passed": true,
+      "name": "register-3"
+    },
+    {
+      "passed": true,
+      "name": "cart-3"
+    },
+    {
+      "passed": true,
+      "name": "register-4"
+    },
+    {
+      "passed": true,
+      "name": "cart-4"
+    },
+    {
+      "passed": true,
+      "name": "register-5"
+    },
+    {
+      "passed": true,
+      "name": "cart-5"
+    },
+    {
+      "passed": true,
+      "name": "register-6"
+    },
+    {
+      "passed": true,
+      "name": "cart-6"
+    },
+    {
+      "passed": true,
+      "name": "register-7"
+    },
+    {
+      "passed": true,
+      "name": "cart-7"
+    },
+    {
+      "passed": true,
+      "name": "register-8"
+    },
+    {
+      "passed": true,
+      "name": "cart-8"
+    },
+    {
+      "passed": true,
+      "name": "register-9"
+    },
+    {
+      "passed": true,
+      "name": "cart-9"
+    },
+    {
+      "passed": true,
+      "name": "register-10"
+    },
+    {
+      "passed": true,
+      "name": "cart-10"
+    },
+    {
+      "passed": true,
+      "name": "register-11"
+    },
+    {
+      "passed": true,
+      "name": "cart-11"
+    },
+    {
+      "passed": true,
+      "name": "register-12"
+    },
+    {
+      "passed": true,
+      "name": "cart-12"
+    },
+    {
+      "passed": true,
+      "name": "register-13"
+    },
+    {
+      "passed": true,
+      "name": "cart-13"
+    },
+    {
+      "passed": true,
+      "name": "register-14"
+    },
+    {
+      "passed": true,
+      "name": "cart-14"
+    },
+    {
+      "passed": true,
+      "name": "register-15"
+    },
+    {
+      "passed": true,
+      "name": "cart-15"
+    },
+    {
+      "passed": true,
+      "name": "register-16"
+    },
+    {
+      "passed": true,
+      "name": "cart-16"
+    },
+    {
+      "passed": true,
+      "name": "register-17"
+    },
+    {
+      "passed": true,
+      "name": "cart-17"
+    },
+    {
+      "passed": true,
+      "name": "register-18"
+    },
+    {
+      "passed": true,
+      "name": "cart-18"
+    },
+    {
+      "passed": true,
+      "name": "register-19"
+    },
+    {
+      "passed": true,
+      "name": "cart-19"
+    },
+    {
+      "passed": true,
+      "name": "register-20"
+    },
+    {
+      "passed": true,
+      "name": "cart-20"
+    },
+    {
+      "passed": true,
+      "name": "register-21"
+    },
+    {
+      "passed": true,
+      "name": "cart-21"
+    },
+    {
+      "passed": true,
+      "name": "register-22"
+    },
+    {
+      "passed": true,
+      "name": "cart-22"
+    },
+    {
+      "passed": true,
+      "name": "register-23"
+    },
+    {
+      "passed": true,
+      "name": "cart-23"
+    },
+    {
+      "passed": true,
+      "name": "register-24"
+    },
+    {
+      "passed": true,
+      "name": "cart-24"
+    },
+    {
+      "passed": true,
+      "name": "register-25"
+    },
+    {
+      "passed": true,
+      "name": "cart-25"
+    },
+    {
+      "passed": true,
+      "name": "register-26"
+    },
+    {
+      "passed": true,
+      "name": "cart-26"
+    },
+    {
+      "passed": true,
+      "name": "register-27"
+    },
+    {
+      "passed": true,
+      "name": "cart-27"
+    },
+    {
+      "passed": true,
+      "name": "register-28"
+    },
+    {
+      "passed": true,
+      "name": "cart-28"
+    },
+    {
+      "passed": true,
+      "name": "register-29"
+    },
+    {
+      "passed": true,
+      "name": "cart-29"
+    },
+    {
+      "passed": true,
+      "name": "register-30"
+    },
+    {
+      "passed": true,
+      "name": "cart-30"
+    },
+    {
+      "passed": true,
+      "name": "holder-reserved-90"
+    },
+    {
+      "passed": true,
+      "name": "ten-units-remain-before-contention"
+    },
+    {
+      "passed": true,
+      "name": "C01-exactly-ten-successes-twenty-business-rejections-no-infrastructure-errors"
+    },
+    {
+      "passed": true,
+      "name": "C01-no-oversell-and-lock-records-match"
+    },
+    {
+      "passed": true,
+      "name": "C01-real-cancel-restores-contender-units"
+    },
+    {
+      "passed": true,
+      "name": "holder-remains-and-ten-units-restored"
+    },
+    {
+      "passed": true,
+      "name": "fixture-cart-readable"
+    },
+    {
+      "passed": true,
+      "name": "fixture-cart-readable"
+    },
+    {
+      "passed": true,
+      "name": "multi-1-cart-1001"
+    },
+    {
+      "passed": true,
+      "name": "multi-1-cart-1002"
+    },
+    {
+      "passed": true,
+      "name": "drain-1-cart"
+    },
+    {
+      "passed": true,
+      "name": "multi-1-reached-inventory-after-commerce-precheck"
+    },
+    {
+      "passed": true,
+      "name": "multi-1-release-within-bounded-window-not-timeout"
+    },
+    {
+      "passed": true,
+      "name": "drain-1-consumes-last-ten-before-held-reserve"
+    },
+    {
+      "passed": true,
+      "name": "multi-1-deterministically-fails-not-timeout-compensation"
+    },
+    {
+      "passed": true,
+      "name": "multi-1-same-held-inventory-request-completed-with-rejection"
+    },
+    {
+      "passed": true,
+      "name": "multi-1-transaction-left-no-lock-rows"
+    },
+    {
+      "passed": true,
+      "name": "multi-1-first-sku-rolled-back-and-short-sku-not-negative"
+    },
+    {
+      "passed": true,
+      "name": "drain-1-canceled-via-api"
+    },
+    {
+      "passed": true,
+      "name": "round-1-ten-units-restored"
+    },
+    {
+      "passed": true,
+      "name": "fixture-cart-readable"
+    },
+    {
+      "passed": true,
+      "name": "fixture-cart-line-removed-via-api"
+    },
+    {
+      "passed": true,
+      "name": "fixture-cart-line-removed-via-api"
+    },
+    {
+      "passed": true,
+      "name": "fixture-cart-readable"
+    },
+    {
+      "passed": true,
+      "name": "multi-2-cart-1002"
+    },
+    {
+      "passed": true,
+      "name": "multi-2-cart-1001"
+    },
+    {
+      "passed": true,
+      "name": "drain-2-cart"
+    },
+    {
+      "passed": true,
+      "name": "multi-2-reached-inventory-after-commerce-precheck"
+    },
+    {
+      "passed": true,
+      "name": "multi-2-release-within-bounded-window-not-timeout"
+    },
+    {
+      "passed": true,
+      "name": "drain-2-consumes-last-ten-before-held-reserve"
+    },
+    {
+      "passed": true,
+      "name": "multi-2-deterministically-fails-not-timeout-compensation"
+    },
+    {
+      "passed": true,
+      "name": "multi-2-same-held-inventory-request-completed-with-rejection"
+    },
+    {
+      "passed": true,
+      "name": "multi-2-transaction-left-no-lock-rows"
+    },
+    {
+      "passed": true,
+      "name": "multi-2-first-sku-rolled-back-and-short-sku-not-negative"
+    },
+    {
+      "passed": true,
+      "name": "drain-2-canceled-via-api"
+    },
+    {
+      "passed": true,
+      "name": "round-2-ten-units-restored"
+    },
+    {
+      "passed": true,
+      "name": "finally-all-owned-orders-terminal-and-stock-restored-via-cancel"
+    }
+  ],
+  "retainedData": "Created synthetic users and order/checkout/lock facts remain; inspect cleanup if failed. No credentials exported."
+}

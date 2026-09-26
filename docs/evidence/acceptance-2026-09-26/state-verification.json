@@ -1,0 +1,147 @@
+{
+  "rows": [
+    {
+      "kind": "stock",
+      "skuId": 1001,
+      "locked": 0,
+      "released": 3,
+      "available": 97,
+      "confirmed": 3,
+      "activeLocks": 0
+    },
+    {
+      "kind": "stock",
+      "skuId": 1002,
+      "locked": 0,
+      "released": 2,
+      "available": 100,
+      "confirmed": 0,
+      "activeLocks": 0
+    },
+    {
+      "kind": "stock",
+      "skuId": 1003,
+      "locked": 0,
+      "released": 0,
+      "available": 100,
+      "confirmed": 0,
+      "activeLocks": 0
+    },
+    {
+      "kind": "stock",
+      "skuId": 1004,
+      "locked": 0,
+      "released": 0,
+      "available": 100,
+      "confirmed": 0,
+      "activeLocks": 0
+    },
+    {
+      "kind": "stock",
+      "skuId": 1005,
+      "locked": 0,
+      "released": 2,
+      "available": 99,
+      "confirmed": 1,
+      "activeLocks": 0
+    },
+    {
+      "kind": "order",
+      "amount": 89.0,
+      "locked": 0,
+      "status": 2,
+      "orderId": "48632354094186496",
+      "released": 0,
+      "confirmed": 1,
+      "itemCount": 1,
+      "expireTime": "2026-09-26 17:38:13.000000",
+      "outTradeNo": "MOCK-48632354094186496",
+      "reservationStatus": 1
+    },
+    {
+      "kind": "order",
+      "amount": 89.0,
+      "locked": 0,
+      "status": 3,
+      "orderId": "48632355404906497",
+      "released": 1,
+      "confirmed": 0,
+      "itemCount": 1,
+      "expireTime": "2026-09-26 17:38:14.000000",
+      "outTradeNo": null,
+      "reservationStatus": 3
+    },
+    {
+      "kind": "order",
+      "amount": 89.0,
+      "locked": 0,
+      "status": 3,
+      "orderId": "48632879122481152",
+      "released": 1,
+      "confirmed": 0,
+      "itemCount": 1,
+      "expireTime": "2026-09-26 17:42:23.000000",
+      "outTradeNo": null,
+      "reservationStatus": 3
+    },
+    {
+      "kind": "order",
+      "amount": 1197.0,
+      "locked": 0,
+      "status": 2,
+      "orderId": "48633000486764545",
+      "released": 0,
+      "confirmed": 3,
+      "itemCount": 3,
+      "expireTime": "2026-09-26 17:43:21.000000",
+      "outTradeNo": "MOCK-48633000486764545",
+      "reservationStatus": 1
+    },
+    {
+      "kind": "order",
+      "amount": 918.0,
+      "locked": 0,
+      "status": 3,
+      "orderId": "48633150259068930",
+      "released": 2,
+      "confirmed": 0,
+      "itemCount": 2,
+      "expireTime": "2026-09-26 17:44:33.000000",
+      "outTradeNo": null,
+      "reservationStatus": 3
+    },
+    {
+      "kind": "order",
+      "amount": 1197.0,
+      "locked": 0,
+      "status": 3,
+      "orderId": "48633252564434947",
+      "released": 3,
+      "confirmed": 0,
+      "itemCount": 3,
+      "expireTime": "2026-09-26 17:45:21.000000",
+      "outTradeNo": null,
+      "reservationStatus": 3
+    },
+    {
+      "kind": "outbox",
+      "type": "PAYMENT_CONFIRMED",
+      "status": 2,
+      "orderId": "48632354094186496",
+      "retries": 0
+    },
+    {
+      "kind": "outbox",
+      "type": "PAYMENT_CONFIRMED",
+      "status": 2,
+      "orderId": "48633000486764545",
+      "retries": 0
+    }
+  ],
+  "requireSettled": true,
+  "passed": true,
+  "violations": [],
+  "project": "fulfillment-acceptance",
+  "recordedAt": "2026-09-26T09:45:28.3506961Z",
+  "readOnly": true
+}

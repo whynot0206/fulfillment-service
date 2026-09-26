@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "fact": {
+    "amount": 89.0,
+    "orderId": "48638434914336784",
+    "attempts": 5,
+    "userOrders": 4,
+    "orderStatus": 3,
+    "resultState": "RESERVED",
+    "cartQuantity": 2,
+    "itemQuantity": 1,
+    "checkoutStatus": 1,
+    "cleanupRequired": 1,
+    "reservationStatus": 3
+  },
+  "flow": "Lost response, edit cart 1 to 2, reload, replay original amount, cancel recovered order",
+  "recordedAt": "2026-09-26T10:25:01.8378211Z",
+  "readOnly": true
+}

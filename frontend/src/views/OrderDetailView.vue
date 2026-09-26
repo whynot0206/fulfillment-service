@@ -72,6 +72,11 @@ watch(() => route.params.orderId, (orderId) => orderId && load(orderId), { immed
   <template v-else-if="order">
     <h1 class="page-title" style="margin-top: 10px">订单 {{ order.orderId }}</h1>
 
+    <div v-if="route.query.retainedCart === '1'" class="banner warn">
+      订单已确认。购物车有后续变更或清理未完成，部分商品可能仍保留；
+      请核对本单商品后处理购物车，避免重复下单。
+    </div>
+
     <div
       v-if="order.reservationStatus === 'PENDING_COMPENSATION'"
       class="banner warn"

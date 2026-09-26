@@ -12,6 +12,12 @@
 - `microservices/` 运行切片：`gateway`（`18080`）、`order-service`（`18081`）、`inventory-service`（`18082`）、`payment-service`（`18083`）及只放 DTO/Feign 契约的 `fulfillment-api`。它验证真实 HTTP 边界、Saga 式状态与补偿、跨进程 Outbox、订单创建幂等、持久化超时关单、Redis 快速路径和数据所有权隔离。
 - V2 MVP 路径：Vue 前端经 Gateway 进入 `commerce-service`（用户、商品、购物车和结算模块化单体），再调用现有 Order、Inventory、Payment 核心服务。商品到模拟支付的本机链路已验收；订单详情已有主动取消和本地模拟支付按钮。Payment 持久化支付单、多实例与生产部署仍未完成，证据见 `docs/mvp-v2-test-evidence-2026-09-24.md` 与 `docs/v2-order-actions-evidence-2026-09-24.md`。
 
+2026-09-26 增量：消费者下单只走 Commerce 结算；网关默认关闭两个历史实验创建入口，微服务浏览器响应的非空 `orderId` 改为 JSON 字符串。隔离本地部署、内置浏览器的模拟支付/主动取消/Order 重启后到期取消三条主链已验证，见 [本轮证据](docs/local-browser-acceptance-2026-09-26.md) 与 [启动验收说明](scripts/acceptance/README.md)。完整计划未全部执行；145 项 Maven 测试、66 项 API 断言、38 项并发断言必须分别表述，不得写为全部 P0/P1 通过、容量达标或生产可用，也不得改写历史证据。
+
+同日可靠性修复继续补充 Commerce 持久化结算意图与限时恢复、普通陈旧 RESERVING 的取消补偿、Outbox owner/lease 栅栏，以及购物车行 ID + revision 条件清理。新增迁移必须停旧 Commerce/Order 写进程后增量执行，不修改历史迁移或重新灌种子；当前运行与验证结论见 [可靠性专项记录](docs/reliability-recovery-2026-09-26.md)，不得将源码存在等同于全部故障场景通过。
+
+同日闭环补验已覆盖浏览器账号切换、真实死信审计重驱、确认后发布器崩溃、取消释放失败和独立库存竞争；最新构建为 270 项后端测试、15 项前端测试。Inventory 缺行间隙锁死锁经真实复现后调整局部事务隔离，保留修复前失败证据；新写入的订单异常摘要不保存下游 URL 或响应正文。当前结果见 [闭环补验记录](docs/closure-acceptance-2026-09-26.md)，不覆盖旧报告原口径，不将跨标签结算键保护表述成完整登录态同步，也不将限定并发正确性表述为容量或生产保证。
+
 代码事实优先级如下：
 
 ```text
@@ -132,6 +138,12 @@ V2 的 `commerce-service` 负责用户最小登录/身份、商品 SPU/SKU/价�
 
 异步命令和 Outbox 都是持久化事实，不是内存队列。领取必须使用条件更新和租约；租约过期可恢复；失败使用指数退避；达到上限后进入死信。投递语义是至少一次，消费端必须幂等，不得声称 exactly-once。只有明确失败终态才允许 Redis 回补；结果未知或可能已经形成有效订单时继续重试并保留事实。
 
+Commerce 的首次调用必须先原子存储原订单号、完整请求快照和租约；同键重试读取原意图及原同意金额，不以当前购物车重构请求。创建恢复窗口截止后仅使用 `resolve-create` 查询，`NOT_FOUND` 不证明旧请求不会晚到；历史缺少关联/快照和超限意图转人工确认，不能静默发新订单。恢复路径不清购物车；同步清车必须匹配原行 ID 和 revision，清理完成之前持久化保留提示，禁止只按 SKU 删除。
+
+浏览器结算凭证与原金额按账号共同保存；同源多标签页使用 Web Locks，轮换需匹配原 key。登录变化、组件卸载及迟到响应不能消耗新意图或导航到旧账号订单；旧请求的 401 不能清除新 token。旧凭证迁移必须保留未确认交易，不能在升级、退出或切换账号时直接清空。该机制不保证跨设备提交幂等。
+
+普通陈旧 RESERVING 的查询及取消 CAS 都必须排除 Redis 命令拥有的订单，取消事实提交后才能释放库存。迟到超时请求若未赢得取消 CAS，不得释放已 RESERVED/PAID 的库存。支付 Outbox 每次领取使用独立 owner，成功/失败写回同时校验 owner 和未过期租约；当前 60 秒不续租。死信处置仅通过受控本地运维入口，校验已支付事实并保留审计；重排成功不代表库存已确认。
+
 ### Rate limit、reconciliation、observability
 
 单体的双层 Redis Lua 令牌桶只作用于配置的 Redis 下单路径，默认关闭以保护基线压测可比性。对账服务只计算和报告 MySQL、Redis 及未落库预扣之间的差异，不自动修复。指标刷新任务应把数据库读取放在定时线程，不要在 Prometheus scrape 请求线程中查询数据库。
@@ -171,9 +183,10 @@ V2 的 `commerce-service` 负责用户最小登录/身份、商品 SPU/SKU/价�
 ├── DESIGN_V2.md                    V2 业务边界、架构、迁移和任务设计
 ├── docs/                           功能边界、规划、审计记录和周期验收证据
 ├── performance/                    JMeter 计划、同配置压测脚本和口径
+├── scripts/acceptance/              本地隔离验收辅助脚本；专用依赖、空库初始化和资源所有权检查
 ├── ops/                            Prometheus 配置、Grafana 数据源和看板
 ├── docker-compose.yml              MySQL、Redis、Prometheus、Grafana 本地依赖；RabbitMQ 仅在 V2 P1 引入后加入
-└── run-tests.ps1                   使用仓库本地 JDK/Maven 的单体测试入口
+└── run-tests.ps1                   旧单体测试入口；当前硬编码工具链路径已失效，执行前先核对
 ```
 
 新增文件优先放入已有业务包和模块，不为一层简单转发创建新的目录或抽象。
@@ -195,6 +208,7 @@ V2 的 `commerce-service` 负责用户最小登录/身份、商品 SPU/SKU/价�
 - 事务注释放在 Service/Application Service 或明确的 Repository 事务方法上。注意同类内部调用不会触发 Spring AOP 代理；需要事务时通过外部 Bean 或重构边界。
 - 单体本地事务可覆盖同一 MySQL 中的订单、库存和锁定记录；微服务远程调用绝不能依赖本地事务回滚，必须使用状态机、Outbox、幂等接口和补偿。
 - 多 SKU 修改按 `skuId` 升序锁定；不得恢复先查后按绝对值写回的库存逻辑。`sku_stock.version` 是教学对照字段，当前生产路径不使用它。
+- 微服务 Inventory 的 reserve/release/confirm 事务显式使用 READ_COMMITTED，避免不存在订单的锁记录范围在 RR 下产生跨订单间隙锁插入死锁；仍须先锁定订单栅栏、对锁记录做当前读、按 SKU 升序原子更新。不得改成全局隔离设置，也不得把它解释为所有死锁已消除；根目录单体和只读对账保持各自原有边界。
 - 所有重复请求和调度重试都要定义幂等键及状态条件。不要以“返回 false”代替清晰的成功、拒绝、未知或待补偿语义。
 
 ### MyBatis、Redis 与重试
@@ -223,6 +237,10 @@ Controller 只做参数绑定、协议校验、调用 Service 和 HTTP 响应转
 V2 Commerce 对外新增商品和购物车 API 时，经 Gateway 暴露 `GET /api/products`、`GET /api/products/{spuId}`、`GET /api/cart`、`POST/PUT/DELETE /api/cart/items...`。购物车中的价格和库存只是展示数据；提交订单时必须重新校验商品快照并由 Order 调用 Inventory。
 
 微服务公开入口经 Gateway 转发；Inventory 的预占、释放、确认及 Redis 变更仅允许 `/internal/**`，由 `X-Internal-Service-Token` 保护。Payment 回调必须校验 `X-Payment-Timestamp`、`X-Payment-Signature` 和默认五分钟时间窗。
+
+商城消费者通过 `POST /api/checkout` 结算，由 Commerce 确定用户与商品价格快照。Gateway 默认拒绝旧 `POST /api/orders`、`POST /api/orders/redis`，订单路由下的 POST 仅明确放行现有的本人取消路径；不能只注入用户头就让消费者提交任意请求体用户/价格。`GATEWAY_LEGACY_ORDER_CREATE_ENABLED=true` 仅解除受控本地实验的入口隔离，仍要求 JWT，不构成业务授权，禁止用于面向普通消费者的部署。保留 Order 直连内部令牌防护和网络隔离要求，详见 `microservices/gateway/README.md`。
+
+微服务面向浏览器的结算、订单列表/详情、取消、支付及实验创建响应，非空 `orderId` 必须序列化为 JSON 字符串；未知结果中的 `null` 保留。内部 Java `long`/`Long`、数据库主键和内部请求契约不因此改为字符串。前端禁止将订单号转成 `Number`；新增返回订单号的浏览器接口必须覆盖超过 JavaScript 安全整数范围的序列化用例。
 
 新增或修改 API 时：
 
@@ -315,6 +333,9 @@ V2 Commerce 对外新增商品和购物车 API 时，经 Gateway 暴露 `GET /ap
 - 单体：`MYSQL_PASSWORD`、`MYSQL_USERNAME`、Redis host/port、调度开关和 `fulfillment.*` 配置。
 - 微服务：`ORDER_DATASOURCE_URL`、`ORDER_DB_USERNAME`、`ORDER_DB_PASSWORD`、`INVENTORY_DATASOURCE_URL`、`INVENTORY_DB_USERNAME`、`INVENTORY_DB_PASSWORD`、`INTERNAL_SERVICE_TOKEN`、`PAYMENT_CALLBACK_SECRET`、服务 URL 和端口。
 - Compose：`MYSQL_ROOT_PASSWORD`、`GRAFANA_ADMIN_PASSWORD`。
+- Gateway 实验开关：`GATEWAY_LEGACY_ORDER_CREATE_ENABLED` 默认 `false`；不能作为身份或价格授权。
+
+`scripts/acceptance/` 仅管理它创建并校验所有权的隔离验收资源，不复用已有数据库/Redis 实例或重置演示数据。明文验收凭证仅加载到进程环境；当前 Windows 用户的 DPAPI 加密配置与非密钥运行元数据保存在被忽略的 `.runtime/acceptance/`，不得输出或提交明文凭证。本轮已验证范围以独立证据为准，脚本存在或健康检查通过不能代替未执行场景的业务验收。
 
 优先在 `application.yml` 使用 `${ENV_VAR:default}`，或通过已有 `@Value` / `@ConfigurationProperties` 注入。业务代码不要散落读取环境变量，也不要把 secret 放入测试日志、README、迁移脚本或提交记录。`.env.example` 只能包含占位值。
 
@@ -329,20 +350,15 @@ V2 Commerce 对外新增商品和购物车 API 时，经 Gateway 暴露 `GET /ap
 - V2 Commerce/前端测试：商品上下架、价格快照、购物车失效、重复提交和从商品到订单的 API/端到端主链路；前端测试不替代后端状态和并发测试。
 - 每个失败分支都要验证是否留下可恢复事实、是否错误回补、是否重复扣减或产生错误成功响应。
 
-常用命令：
+当前工具链与命令（执行前仍需核对依赖、数据隔离和测试范围）：
 
 ```powershell
-# 根目录单体（使用仓库本地 JDK/Maven）
-.\run-tests.ps1
-
-# 传递 Maven 参数，例如单个测试
-.\run-tests.ps1 -MavenArgs @('test', '-Dtest=StockConcurrencyTest')
-
-# 微服务父工程；先按 README 配置数据库、Redis 和环境变量
-& 'D:\vibecoding\.toolchains\maven\apache-maven-3.9.16\bin\mvn.cmd' `
-  '-Dmaven.repo.local=D:\vibecoding\.m2\repository' `
+$env:JAVA_HOME = 'D:\vibecoding\.toolchains\java17\jdk-17.0.20.1+1'
+& 'D:\vibecoding\.toolchains\maven\apache-maven-3.9.11\bin\mvn.cmd' `
   -f .\microservices\pom.xml test
 ```
+
+以上路径是 2026-09-26 本机已发现的 JDK 17/Maven 布局，其他机器应重新发现工具链。旧 `run-tests.ps1` 仍写死 `jdk-17` 与 Maven `3.9.16` 路径，当前不能直接使用；本轮未修改该单体脚本。单体真实数据库/Redis 测试必须另行选择正确 JDK/Maven 和专用实验数据，不能将根目录测试直接指向当前商城库。
 
 修改核心库存、状态机、异步任务或 SQL 后，至少运行受影响模块测试；修改公共契约、迁移或调度语义后运行对应完整工程测试。周期证据中的测试数量和性能数据是当前基线，不得在未重跑的情况下更新结论。
 
@@ -401,6 +417,8 @@ V2 Commerce 对外新增商品和购物车 API 时，经 Gateway 暴露 `GET /ap
 - `git diff --check`，并确认没有意外修改、密钥或生成文件。
 
 ## 20. Compatibility Rules
+
+本轮明确的契约收敛为：Gateway 历史实验创建入口默认禁用，以及微服务浏览器响应的非空 `orderId` 从 JSON 数字改为字符串。底层实验接口、内部 Java 订单号类型和数据库类型保留；兼容旧压测不能成为重新开放消费者任意用户/价格写入的理由。
 
 除非任务明确要求 breaking change，默认保持：
 

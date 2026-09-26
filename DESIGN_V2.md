@@ -4,6 +4,9 @@
 >
 > 事实口径：当前代码与测试优先，docs/project-function-boundary.md 是现状边界入口；本文中的“目标”“计划”“V2”表示尚未全部落地的设计。2026-09-24 的 MVP 实现与本机验收见 docs/mvp-v2-test-evidence-2026-09-24.md。
 > 后续增量：用户主动取消和本地模拟支付已实现，验证见 docs/v2-order-actions-evidence-2026-09-24.md；Payment 持久化支付单仍属于未完成设计。
+> 2026-09-26 当前增量：消费者下单统一走 Commerce 的 `POST /api/checkout`；Gateway 默认封闭历史实验创建入口，仅可在受控本地环境显式开启。微服务浏览器响应中的非空 `orderId` 使用 JSON 字符串，内部 Java `long`/`Long` 与数据库类型保持不变。本轮已验证隔离本地部署与模拟支付、主动取消、Order 重启后到期取消三条浏览器主链，见 [本轮证据](docs/local-browser-acceptance-2026-09-26.md)。完整验收计划未全部执行，后文生产化架构、支付模型与任务清单仍不能视为全部完成。
+>
+> 同日可靠性增量：已实现并实测持久化结算意图恢复、普通 RESERVING 中断后取消补偿、购物车原行/版本条件清理与支付确认失败重试；Outbox 增加 owner/lease 校验和本地审计重驱入口。前一轮 252 项后端测试与 52 条故障断言见 [专项证据](docs/reliability-recovery-2026-09-26.md)。后续真实死信重驱与确认后发布器中断已验证，见 [闭环补验](docs/closure-acceptance-2026-09-26.md)；多实例、RabbitMQ 与运维后台仍未验收/未实现，后文目标清单不因此整体完成。
 
 ## 1. 项目定位
 
@@ -23,7 +26,7 @@
 
 V2 的技术重点不是堆叠中间件，而是解决这条链路在大促和故障条件下的真实问题：热点库存超卖、多 SKU 并发死锁、重复下单、重复支付回调、支付与超时关单竞争、消息重复投递、Redis 与 MySQL 异步不一致以及服务重启后的恢复。
 
-当前仓库已经有较完整的库存与履约核心，但还缺商品、购物车、用户入口和面向消费者的完整 Web API。因此 V2 是在现有履约核心上补齐“可使用的商城外壳”，并把实验代码收敛为可演示、可测试、可部署的业务系统。
+V2 设计起点是已有库存与履约核心、缺少商品与消费者入口。当前 MVP 已补齐 Commerce 和 Vue 商城，后续重点是继续收敛实验入口、完成真实用户操作验收并补齐恢复缺口；已有本机 HTTP 证据不等于生产化目标已完成。
 
 ## 2. 当前版本目标
 
@@ -68,14 +71,15 @@ V2 暂不实现以下能力：
 - Micrometer、Actuator、Prometheus、Grafana 和单体运行看板；
 - 真实 MySQL 超卖、死锁、Redis 端到端、JMeter 压测和故障分支测试。
 
-microservices/ 当前包含四个运行进程和一个契约模块：
+microservices/ 当前包含五个运行进程和一个契约模块：
 
 | 模块 | 端口 | 已有职责 |
 | --- | ---: | --- |
-| gateway | 18080 | Spring Cloud Gateway 路由 |
+| gateway | 18080 | 路由、JWT/可信身份头及默认实验入口隔离 |
 | order-service | 18081 | 订单创建、明细、状态、支付、Outbox、超时关单、异步命令和补偿 |
 | inventory-service | 18082 | 库存预占、释放、确认、Redis Lua、账本、取消栅栏和对账 |
 | payment-service | 18083 | 支付回调时间窗、HMAC 校验和 Order 调用 |
+| commerce-service | 18084 | 用户、商品、购物车、结算幂等和价格快照 |
 | fulfillment-api | - | Feign 接口和 DTO，不含实体和 Mapper |
 
 ### 4.2 可以直接复用的部分
@@ -95,20 +99,20 @@ microservices/ 当前包含四个运行进程和一个契约模块：
 - 单体直接通过 InventoryController 读取 SkuStockMapper，绕过了库存 Service；
 - 单体与微服务存在两套命令表、账本和调度实现，适合对照验证，但不适合作为同一线上部署共同消费；
 - 当前微服务使用固定 URL、共享 MySQL 实例和本地定时任务，尚未证明多实例抢占、容量和实例级故障隔离；
-- 当前没有商品、购物车、用户和前端，尚不能称为完整电商平台。
+- 商品、购物车、用户和前端已补齐；历史任意用户/价格创建接口仍是实验能力，不能作为消费者结算入口。
 
 ## 5. 当前架构存在的问题
 
-1. **业务入口不完整**：下单需要直接构造请求，缺少商品查询、购物车校验、价格快照和消费者 API。
+1. **结算恢复有明确边界**：首次调用前已持久化订单号与完整快照，后台通过租约、限时重试和只读核对恢复结果；历史缺快照记录、恢复窗口截止后仍未知的记录转人工确认，不盲目创建新单。不能把这些恢复能力等同于所有故障自动收敛。
 2. **运行路径重复**：单体和微服务各有一套订单命令、库存 Redis 适配和调度器，边界容易被误用。
 3. **普通单体订单不完整**：根目录 order 初始化表有 order_item，但普通单体下单代码没有写入明细，也没有微服务版本的同载荷重放冲突。
 4. **Controller 职责不完全清晰**：单体库存查询直接注入 Mapper；部分 Controller 通过手写 if 重复校验。
 5. **支付模型偏薄**：微服务 Payment 当前接收回调并调用 Order，没有独立支付单状态和支付回调记录，重复回调审计能力不足。
-6. **消息机制尚未形成生产链路**：当前是数据库 Outbox + 定时发布，可靠性适合单机验证；没有统一事件命名、消息 Broker、积压监控和人工重放入口。
+6. **消息机制尚未形成生产链路**：当前是数据库 Outbox + 定时发布，已有支付事件 owner/lease 栅栏及专用本地死信审计重驱脚本，但没有生产消息 Broker、统一运维后台或多实例验证。重驱只重新排队，不等于库存确认已完成。
 7. **数据所有权已开始隔离但实例仍共享**：Order 和 Inventory 有独立 schema 与账号，但仍位于同一个 MySQL 实例。
-8. **安全边界有限**：内部共享令牌和支付 HMAC 是本地切片的基础校验，不等于用户登录、TLS、密钥轮换和服务身份体系。
+8. **安全边界有限**：已有 JWT、内部共享令牌、支付 HMAC 及默认实验入口隔离，但尚不具备生产 TLS、密钥轮换和细粒度服务身份体系。
 9. **可观测性不完整**：已有指标端点，但缺请求关联 ID、分布式追踪、集中日志、告警和业务 SLO。
-10. **前端缺失**：没有真实消费者操作界面，无法通过端到端流程验证购物车、价格变化、重复提交和订单查询。
+10. **浏览器覆盖仍有限**：本轮已通过真实页面验证注册、商品规格/数量、购物车、结算、长订单号详情、模拟支付、主动取消，以及 Order 重启后到期取消的刷新结果；同键并发重放另有接口冒烟证据。价格变化、商品下架、库存不足等负面组合及故障恢复尚未完整覆盖，不能由三条页面主链外推为完整计划通过。
 
 ## 6. V2 整体架构设计
 
@@ -287,27 +291,33 @@ sequenceDiagram
     participant I as Inventory
     participant DB as Order DB
 
-    C->>G: POST /api/orders + Idempotency-Key
-    G->>M: 校验用户与购物车
+    C->>G: POST /api/checkout + Idempotency-Key
+    G->>M: 验证 JWT 后转发结算
+    M->>M: 校验购物车与当前价格、认领幂等键
     M->>O: 商品/SKU/价格快照
-    O->>DB: 条件创建 CREATING/PENDING_PAYMENT
+    O->>DB: 创建待支付订单/明细与 RESERVING
     O->>I: reserve(orderId, items)
     alt 预占成功
         I-->>O: RESERVED
         O->>DB: 提交订单、明细和 RESERVED
-        O-->>C: 201 PENDING_PAYMENT
+        O-->>M: RESERVED
+        M-->>C: 200 结算结果，orderId 为字符串
     else 库存不足
         I-->>O: REJECTED
         O->>DB: FAILED
-        O-->>C: 409
+        O-->>M: FAILED
+        M-->>C: 200 业务失败结果
     else 结果未知
         I-->>O: timeout/unknown
         O->>DB: PENDING_COMPENSATION
-        O-->>C: 202/503 可重试
+        O-->>M: PENDING_COMPENSATION
+        M-->>C: 409 CHECKOUT_RESULT_UNKNOWN，请核对订单
     end
 ~~~
 
 推荐 V2 的顺序是“先持久化订单意图，再调用库存”，这样结果未知时有订单状态可恢复；库存接口必须以 orderId + SKU + payload signature 幂等。对于 Redis 快速路径，命令先持久化，再由 Inventory 执行 Lua 预扣，避免“Redis 已扣但没有可靠事实”的窗口。
+
+当前消费者结算不使用 Redis 实验入口。历史 `POST /api/orders` 与 `POST /api/orders/redis` 在默认网关被拒绝；`GATEWAY_LEGACY_ORDER_CREATE_ENABLED=true` 仅供隔离本地实验，仍需 JWT，但不校验实验请求体中的用户/价格授权，不得向普通消费者开放。未知结算由持久化意图恢复，截止后仅核对原单；仍未查到不能当作确定失败，具体边界见可靠性专项报告。
 
 ## 14. 支付完整时序
 
@@ -371,7 +381,7 @@ sequenceDiagram
 
 | 场景 | 幂等键 | 存储与判断 |
 | --- | --- | --- |
-| 创建订单 | Idempotency-Key + 用户 | Order DB 唯一键和规范化请求摘要 |
+| 商城结算 | Idempotency-Key + 用户 | Commerce DB 唯一键和规范化请求摘要；通过内部契约调用 Order |
 | 订单业务重放 | orderId | 比较用户、金额、超时和完整明细；同载荷返回既有状态，异载荷 409 |
 | 库存预占 | orderId + skuId | 锁定记录唯一键、载荷校验和状态机 |
 | 支付回调 | outTradeNo | Payment 唯一约束 + Order 条件更新 |
@@ -497,13 +507,15 @@ DELETE /api/cart/items/{skuId}
 ### 订单
 
 ~~~text
-POST /api/orders
+POST /api/checkout
 GET  /api/orders/{orderId}
 GET  /api/orders
 POST /api/orders/{orderId}/cancel
 ~~~
 
-POST /api/orders 必须携带 Idempotency-Key，请求包括用户、收货地址快照、商品 SKU、数量和客户端价格摘要。服务端以商品当前价格为准，返回订单状态和支付截止时间。
+当前消费者 `POST /api/checkout` 携带 JWT、`Idempotency-Key` 和预期总价，由 Commerce 读取当前用户购物车并重新校验商品价格，不接受消费者指定最终订单用户或成交价。历史两个创建 POST 保留在实验边界，默认由 Gateway 封闭。订单查询、本人取消和内部 Commerce 创建契约不受实验开关影响。
+
+浏览器收到的结算、订单列表/详情、取消、支付及实验创建响应，非空 `orderId` 统一为 JSON 字符串，未知结果仍可为 `null`。前端按字符串展示、保存和拼接请求路径，不使用 `Number` 转换；内部 Java `long`/`Long`、SQL 主键和内部请求 DTO 类型不变。这是传输精度修正，不是订单编号算法或数据库迁移。
 
 ### 支付
 
@@ -563,6 +575,8 @@ V2 P2 增加 OpenTelemetry 或等价链路追踪，统一采集 Gateway、Order�
 ## 26. Docker 与部署架构
 
 ### 本地开发
+
+本节完整 Compose 列表是目标部署形态。当前已用 [隔离验收脚本](scripts/acceptance/README.md) 部署专用 MySQL/Redis、五个本机后端和 Vue 开发服务器，完成三条浏览器交易主链并只读核对最终状态，见 [本轮证据](docs/local-browser-acceptance-2026-09-26.md)。没有部署生产 Nginx、Prometheus/Grafana 或多实例；145 项 Maven 测试、66 项 API 断言与 38 项并发断言是不同验证口径，完整计划仍未全部执行。
 
 Docker Compose 提供：
 

@@ -11,6 +11,12 @@ package com.why.fulfillment.commerce.cart.service;
  * @param skuId    SKU 编号
  * @param quantity 数量
  * @param selected 是否勾选
+ * @param rowId    原购物车行身份，删除后重加会获得不同身份
+ * @param revision 原购物车行版本；任何写操作都会递增，避免修改后恢复原值的 ABA
  */
-public record CartItemSnapshot(Long skuId, Integer quantity, Boolean selected) {
+public record CartItemSnapshot(Long skuId, Integer quantity, Boolean selected, Long rowId, Long revision) {
+    /** Old cache/test values remain readable but are never sufficient for automatic cleanup. */
+    public CartItemSnapshot(Long skuId, Integer quantity, Boolean selected) {
+        this(skuId, quantity, selected, null, null);
+    }
 }

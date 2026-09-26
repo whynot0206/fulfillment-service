@@ -1,0 +1,86 @@
+{
+  "case": "ReleaseFailure",
+  "recordedAtUtc": "2026-09-26T13:24:29.5804602Z",
+  "stage": "ReleaseFailure",
+  "observations": [],
+  "note": "Single-instance real HTTP faults; assertions do not establish multi-instance or production reliability.",
+  "checks": [
+    {
+      "name": "F04.proxy-starts-idle",
+      "passed": true
+    },
+    {
+      "name": "F04.user-created",
+      "passed": true
+    },
+    {
+      "name": "F04.cart-ready",
+      "passed": true
+    },
+    {
+      "name": "F04.order-reserved",
+      "passed": true
+    },
+    {
+      "name": "F04.real-owned-order",
+      "passed": true
+    },
+    {
+      "name": "F04.single-unit-stock-reserved",
+      "passed": true
+    },
+    {
+      "name": "F04.cancel-persists-despite-release-outage",
+      "passed": true
+    },
+    {
+      "name": "F04.cancellation-remains-pending-compensation",
+      "passed": true
+    },
+    {
+      "name": "F04.background-release-retry-also-failed",
+      "passed": true
+    },
+    {
+      "name": "F04.failure-does-not-pretend-stock-is-released",
+      "passed": true
+    },
+    {
+      "name": "F04.original-reservation-remains-locked",
+      "passed": true
+    },
+    {
+      "name": "F04.compensation-converges-after-dependency-restored",
+      "passed": true
+    },
+    {
+      "name": "F04.stock-restored-exactly-once",
+      "passed": true
+    },
+    {
+      "name": "F04.reservation-released-and-cancel-fence-retained",
+      "passed": true
+    },
+    {
+      "name": "F04.repeated-cancel-keeps-terminal-state",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "fixtures": [
+    {
+      "orderId": "48661180882878468",
+      "userId": 12,
+      "reserved": {
+        "stock": 98,
+        "locked": 1
+      },
+      "before": {
+        "stock": 99,
+        "locked": 0
+      },
+      "runId": "1058565e0f9d4b9896a31cf942da8567",
+      "skuId": 1003
+    }
+  ]
+}

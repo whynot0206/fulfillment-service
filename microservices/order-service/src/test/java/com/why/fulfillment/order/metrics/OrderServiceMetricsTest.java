@@ -1,7 +1,7 @@
 package com.why.fulfillment.order.metrics;
 
 import com.why.fulfillment.order.domain.RedisOrderCommand;
-import com.why.fulfillment.order.repository.OrderRepository;
+import com.why.fulfillment.order.repository.ConfirmationOutboxRepository;
 import com.why.fulfillment.order.repository.RedisOrderCommandRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -17,7 +17,7 @@ class OrderServiceMetricsTest {
     @Test
     void refreshesRedisCommandAndOutboxStatusGauges() {
         RedisOrderCommandRepository commands = mock(RedisOrderCommandRepository.class);
-        OrderRepository orders = mock(OrderRepository.class);
+        ConfirmationOutboxRepository orders = mock(ConfirmationOutboxRepository.class);
         when(commands.countByStatus()).thenReturn(Map.of(
                 RedisOrderCommand.PREPARING, 2L,
                 RedisOrderCommand.PROCESSING, 3L,

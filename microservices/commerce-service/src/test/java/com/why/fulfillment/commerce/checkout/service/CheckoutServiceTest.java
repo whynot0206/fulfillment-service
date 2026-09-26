@@ -1,6 +1,8 @@
 package com.why.fulfillment.commerce.checkout.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.why.fulfillment.api.order.OrderClient;
+import com.why.fulfillment.api.order.OrderCreateItem;
 import com.why.fulfillment.api.order.OrderCreateRequest;
 import com.why.fulfillment.api.order.OrderCreateResponse;
 import com.why.fulfillment.commerce.cart.service.CartItemSnapshot;
@@ -28,6 +30,8 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -38,23 +42,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * 结算的失败用例。
- *
- * <p><b>这个文件现在是红的，而且必须先红。</b>它钉住的是 {@code CheckoutService}
- * 里留空的三个方法（{@code revalidate} / {@code digest} / {@code claimIdempotencyKey}）
- * 应该有的行为。跑一次会看到一片 {@code UnsupportedOperationException}，
- * 那就是你的待办清单。</p>
- *
- * <p>建议的推进顺序：先让 {@code revalidate} 那一组绿，再是 {@code digest}，
- * 最后是 {@code claimIdempotencyKey}——最后这组是唯一涉及并发的，
- * 前两组绿了之后你才能确定失败原因只可能出在它身上。</p>
- *
- * <p>这里<b>没有用 {@code MockitoExtension}</b>，是为了不触发严格存根检查：
- * 你的实现可以自由选择调 {@code available(Long)} 还是 {@code available(Collection)}，
- * 两个都被存根了，用哪个都不会因为「有未使用的存根」而误报失败。
- * 测试该约束的是行为，不是你按什么顺序调了哪个方法。</p>
- */
+/** Checkout validation, immutable idempotent intent and synchronous cart boundary. */
 class CheckoutServiceTest {
 
     private static final long USER_ID = 9001L;
@@ -71,9 +59,12 @@ class CheckoutServiceTest {
     private final CheckoutRequestMapper checkoutRequestMapper = mock(CheckoutRequestMapper.class);
     private final OrderClient orderClient = mock(OrderClient.class);
 
+    private final CheckoutRecoveryService recovery = new CheckoutRecoveryService(
+            checkoutRequestMapper, orderClient, new ObjectMapper(), 30, 8, 2, 60, 1800, 30);
+
     private final CheckoutService checkoutService = new CheckoutService(
             cartService, skuMapper, spuMapper, availabilityService,
-            checkoutRequestMapper, orderClient, new OrderIdGenerator(0L), 1800L);
+            checkoutRequestMapper, recovery, new OrderIdGenerator(0L), 1800L);
 
     // =================================================================================
     // 第一组：revalidate —— 重新校验与价格快照
@@ -326,7 +317,7 @@ class CheckoutServiceTest {
     void aFreshKeyIsClaimedWithoutQueryingFirst() {
         whenInsertSucceedsWithId(77L);
 
-        IdempotencyClaim claim = checkoutService.claimIdempotencyKey(USER_ID, KEY, "digest-a");
+        IdempotencyClaim claim = checkoutService.claimIdempotencyKey(intent("digest-a", "10.00"));
 
         assertThat(claim.outcome()).isEqualTo(IdempotencyClaim.Outcome.CLAIMED);
         assertThat(claim.claimId()).isEqualTo(77L);
@@ -340,7 +331,7 @@ class CheckoutServiceTest {
         when(checkoutRequestMapper.selectByUserAndKey(USER_ID, KEY))
                 .thenReturn(existing("digest-a", CheckoutRequest.STATUS_SUBMITTED, 555L));
 
-        IdempotencyClaim claim = checkoutService.claimIdempotencyKey(USER_ID, KEY, "digest-a");
+        IdempotencyClaim claim = checkoutService.claimIdempotencyKey(intent("digest-a", "10.00"));
 
         assertThat(claim.outcome()).isEqualTo(IdempotencyClaim.Outcome.REPLAY);
         assertThat(claim.existing().getOrderId()).isEqualTo(555L);
@@ -352,12 +343,12 @@ class CheckoutServiceTest {
      * <p>前端复用了键但购物车已经变了。按新载荷悄悄下单，用户会买到他没确认的东西。</p>
      */
     @Test
-    void sameKeyWithADifferentPayloadIsAConflict() {
+    void sameKeyWithADifferentAmountIsAConflict() {
         whenInsertHitsTheUniqueKey();
         when(checkoutRequestMapper.selectByUserAndKey(USER_ID, KEY))
                 .thenReturn(existing("digest-a", CheckoutRequest.STATUS_SUBMITTED, 555L));
 
-        IdempotencyClaim claim = checkoutService.claimIdempotencyKey(USER_ID, KEY, "digest-b");
+        IdempotencyClaim claim = checkoutService.claimIdempotencyKey(intent("digest-b", "11.00"));
 
         assertThat(claim.outcome()).isEqualTo(IdempotencyClaim.Outcome.CONFLICT);
     }
@@ -373,7 +364,7 @@ class CheckoutServiceTest {
         whenInsertHitsTheUniqueKey();
         when(checkoutRequestMapper.selectByUserAndKey(USER_ID, KEY)).thenReturn(null);
 
-        assertThatThrownBy(() -> checkoutService.claimIdempotencyKey(USER_ID, KEY, "digest-a"))
+        assertThatThrownBy(() -> checkoutService.claimIdempotencyKey(intent("digest-a", "10.00")))
                 .isInstanceOf(DuplicateKeyException.class);
     }
 
@@ -390,7 +381,7 @@ class CheckoutServiceTest {
         when(checkoutRequestMapper.selectByUserAndKey(USER_ID, KEY))
                 .thenReturn(existing("digest-a", CheckoutRequest.STATUS_IN_PROGRESS, null));
 
-        IdempotencyClaim claim = checkoutService.claimIdempotencyKey(USER_ID, KEY, "digest-a");
+        IdempotencyClaim claim = checkoutService.claimIdempotencyKey(intent("digest-a", "10.00"));
 
         assertThat(claim.outcome()).isEqualTo(IdempotencyClaim.Outcome.REPLAY);
     }
@@ -485,8 +476,11 @@ class CheckoutServiceTest {
 
         assertThat(result.orderId()).isNotNull();
         assertThat(result.state()).isEqualTo("RESERVED");
-        verify(checkoutRequestMapper).markSubmitted(77L, result.orderId());
-        verify(cartService).removeCheckedOut(USER_ID, List.of(SKU_A));
+        verify(checkoutRequestMapper).finishSubmitted(eq(77L), anyString(), eq("RESERVED"), eq(true));
+        assertThat(stored.getOrderId()).isEqualTo(result.orderId());
+        assertThat(stored.getRequestPayload()).contains("机械键盘");
+        verify(cartService).removeCheckedOutSnapshot(USER_ID, List.of(cartItem(SKU_A, 2)));
+        assertThat(result.cartCleanupRequired()).isFalse();
     }
 
     /**
@@ -504,12 +498,49 @@ class CheckoutServiceTest {
         when(orderClient.create(any())).thenAnswer(invocation -> new OrderCreateResponse(
                 ((OrderCreateRequest) invocation.getArgument(0)).orderId(), "RESERVED", "ok", false));
         doThrow(new IllegalStateException("redis down"))
-                .when(cartService).removeCheckedOut(anyLong(), anyList());
+                .when(cartService).removeCheckedOutSnapshot(anyLong(), anyList());
 
         CheckoutResultView result = checkoutService.submit(USER_ID, KEY,
                 new CheckoutSubmitRequest(new BigDecimal("10.00")));
 
         assertThat(result.state()).isEqualTo("RESERVED");
+        assertThat(result.cartCleanupRequired()).isTrue();
+        verify(checkoutRequestMapper, never()).markCartCleaned(anyLong());
+    }
+
+    @Test
+    void changedCartRowsKeepTheConservativeCleanupFlag() {
+        givenSelectedCart(cartItem(SKU_A, 1));
+        givenCatalog(sku(SKU_A, SPU_A, "10.00", 1), spu(SPU_A, "机械键盘", 1));
+        givenAvailability(Map.of(SKU_A, 100));
+        whenInsertSucceedsWithId(77L);
+        when(orderClient.create(any())).thenAnswer(invocation -> new OrderCreateResponse(
+                ((OrderCreateRequest) invocation.getArgument(0)).orderId(), "RESERVED", "ok", false));
+        when(cartService.removeCheckedOutSnapshot(anyLong(), anyList())).thenReturn(false);
+
+        CheckoutResultView result = checkoutService.submit(USER_ID, KEY,
+                new CheckoutSubmitRequest(new BigDecimal("10.00")));
+
+        assertThat(result.cartCleanupRequired()).isTrue();
+        assertThat(result.state()).isEqualTo("RESERVED");
+        verify(checkoutRequestMapper, never()).markCartCleaned(anyLong());
+    }
+
+    @Test
+    void aCleanupMarkerFailureDoesNotTurnAcceptedOrderIntoAnHttpFailure() {
+        givenSelectedCart(cartItem(SKU_A, 1));
+        givenCatalog(sku(SKU_A, SPU_A, "10.00", 1), spu(SPU_A, "机械键盘", 1));
+        givenAvailability(Map.of(SKU_A, 100));
+        whenInsertSucceedsWithId(77L);
+        when(orderClient.create(any())).thenAnswer(invocation -> new OrderCreateResponse(
+                ((OrderCreateRequest) invocation.getArgument(0)).orderId(), "RESERVED", "ok", false));
+        when(checkoutRequestMapper.markCartCleaned(77L)).thenThrow(new IllegalStateException("db offline"));
+
+        CheckoutResultView result = checkoutService.submit(USER_ID, KEY,
+                new CheckoutSubmitRequest(new BigDecimal("10.00")));
+
+        assertThat(result.state()).isEqualTo("RESERVED");
+        assertThat(result.cartCleanupRequired()).isTrue();
     }
 
     /**
@@ -533,8 +564,8 @@ class CheckoutServiceTest {
                 .satisfies(thrown -> assertThat(((CommerceException) thrown).getCode())
                         .isEqualTo("CHECKOUT_RESULT_UNKNOWN"));
 
-        verify(checkoutRequestMapper, never()).markRejected(anyLong(), any(), anyString());
-        verify(checkoutRequestMapper, never()).markSubmitted(anyLong(), anyLong());
+        verify(checkoutRequestMapper, never()).finishRejected(anyLong(), anyString(), anyString(), anyString());
+        verify(checkoutRequestMapper, never()).finishSubmitted(anyLong(), anyString(), anyString(), anyBoolean());
     }
 
     /**
@@ -561,8 +592,8 @@ class CheckoutServiceTest {
                 .satisfies(thrown -> assertThat(((CommerceException) thrown).getCode())
                         .isEqualTo("CHECKOUT_RESULT_UNKNOWN"));
 
-        verify(checkoutRequestMapper, never()).markRejected(anyLong(), any(), anyString());
-        verify(cartService, never()).removeCheckedOut(anyLong(), anyList());
+        verify(checkoutRequestMapper, never()).finishRejected(anyLong(), anyString(), anyString(), anyString());
+        verify(cartService, never()).removeCheckedOutSnapshot(anyLong(), anyList());
     }
 
     /**
@@ -586,9 +617,9 @@ class CheckoutServiceTest {
                 .satisfies(thrown -> assertThat(((CommerceException) thrown).getCode())
                         .isEqualTo("CHECKOUT_RESULT_UNKNOWN"));
 
-        verify(checkoutRequestMapper, never()).markRejected(anyLong(), any(), anyString());
-        verify(checkoutRequestMapper, never()).markSubmitted(anyLong(), anyLong());
-        verify(cartService, never()).removeCheckedOut(anyLong(), anyList());
+        verify(checkoutRequestMapper, never()).finishRejected(anyLong(), anyString(), anyString(), anyString());
+        verify(checkoutRequestMapper, never()).finishSubmitted(anyLong(), anyString(), anyString(), anyBoolean());
+        verify(cartService, never()).removeCheckedOutSnapshot(anyLong(), anyList());
     }
 
     /** 下游明确拒绝（库存不足）：记下原因，返回带 state 的结果而不是异常。 */
@@ -605,9 +636,9 @@ class CheckoutServiceTest {
                 new CheckoutSubmitRequest(new BigDecimal("10.00")));
 
         assertThat(result.state()).isEqualTo("FAILED");
-        assertThat(result.message()).isEqualTo("库存不足");
-        verify(checkoutRequestMapper).markRejected(eq(77L), any(), eq("库存不足"));
-        verify(cartService, never()).removeCheckedOut(anyLong(), anyList());
+        assertThat(result.message()).contains("库存不足");
+        verify(checkoutRequestMapper).finishRejected(eq(77L), anyString(), eq("FAILED"), eq("库存不足或订单创建被拒绝"));
+        verify(cartService, never()).removeCheckedOutSnapshot(anyLong(), anyList());
     }
 
     /** 同键同载荷重放：不能再下一单，直接把上次的结果还回去。 */
@@ -684,30 +715,26 @@ class CheckoutServiceTest {
                 .isInstanceOf(CommerceException.class)
                 .satisfies(thrown -> {
                     CommerceException exception = (CommerceException) thrown;
-                    assertThat(exception.getCode()).isEqualTo("CHECKOUT_IN_PROGRESS");
+                    assertThat(exception.getCode()).isEqualTo("CHECKOUT_RECOVERY_REQUIRED");
                     assertThat(exception.getStatus()).isEqualTo(HttpStatus.CONFLICT);
                 });
 
         verify(orderClient, never()).create(any());
     }
 
-    /** 同键异载荷：409，绝不按新载荷下单。 */
+    /** A key remains bound to its original intent even after new cart items or catalog prices change. */
     @Test
-    void reusingAKeyForADifferentCartIsRejected() {
-        givenSelectedCart(cartItem(SKU_A, 1));
-        givenCatalog(sku(SKU_A, SPU_A, "10.00", 1), spu(SPU_A, "机械键盘", 1));
-        givenAvailability(Map.of(SKU_A, 100));
-        whenInsertHitsTheUniqueKey();
-        when(checkoutRequestMapper.selectByUserAndKey(anyLong(), anyString()))
-                .thenReturn(existing("a-digest-from-an-entirely-different-cart",
-                        CheckoutRequest.STATUS_SUBMITTED, 555L));
+    void replayUsesTheOriginalIntentWithoutReadingTheChangedCartOrCatalog() {
+        CheckoutRequest previous = existing("old-cart-digest", CheckoutRequest.STATUS_SUBMITTED, 555L);
+        when(checkoutRequestMapper.selectByUserAndKey(USER_ID, KEY)).thenReturn(previous);
 
-        assertThatThrownBy(() -> checkoutService.submit(USER_ID, KEY,
-                new CheckoutSubmitRequest(new BigDecimal("10.00"))))
-                .isInstanceOf(CommerceException.class)
-                .satisfies(thrown -> assertThat(((CommerceException) thrown).getCode())
-                        .isEqualTo("IDEMPOTENCY_KEY_REUSED"));
+        CheckoutResultView result = checkoutService.submit(USER_ID, KEY,
+                new CheckoutSubmitRequest(new BigDecimal("10.00")));
 
+        assertThat(result.orderId()).isEqualTo(555L);
+        assertThat(result.replayed()).isTrue();
+        verify(cartService, never()).selectedItems(anyLong());
+        verify(skuMapper, never()).selectByIds(anyList());
         verify(orderClient, never()).create(any());
     }
 
@@ -717,6 +744,7 @@ class CheckoutServiceTest {
 
     /** 记下最后一次尝试插入时用的摘要，好在重放用例里构造「一模一样的载荷」。 */
     private String lastAttemptedDigest;
+    private CheckoutRequest stored;
 
     private void givenSelectedCart(CartItemSnapshot... items) {
         when(cartService.selectedItems(USER_ID)).thenReturn(List.of(items));
@@ -745,13 +773,46 @@ class CheckoutServiceTest {
         return stock;
     }
 
+    private CheckoutRequest intent(String digest, String amount) {
+        return recovery.prepare(USER_ID, KEY, digest, new OrderCreateRequest(987L, USER_ID,
+                new BigDecimal(amount), 1800L, List.of(new OrderCreateItem(SKU_A, SPU_A, 1,
+                new BigDecimal(amount), "机械键盘", "{}"))));
+    }
+
     private void whenInsertSucceedsWithId(long generatedId) {
+        when(cartService.removeCheckedOutSnapshot(anyLong(), anyList())).thenReturn(true);
+        when(checkoutRequestMapper.markCartCleaned(anyLong())).thenReturn(1);
         when(checkoutRequestMapper.insertClaim(any())).thenAnswer(invocation -> {
-            CheckoutRequest claim = invocation.getArgument(0);
-            lastAttemptedDigest = claim.getRequestDigest();
-            claim.setId(generatedId);
+            stored = invocation.getArgument(0);
+            lastAttemptedDigest = stored.getRequestDigest();
+            stored.setId(generatedId);
+            assertThat(stored.getOrderId()).isNotNull();
+            assertThat(stored.getRequestPayload()).isNotBlank();
+            assertThat(stored.getLeaseOwner()).isNotBlank();
             return 1;
         });
+        when(checkoutRequestMapper.selectOwned(anyLong(), anyString())).thenAnswer(invocation -> stored);
+        when(checkoutRequestMapper.selectById(anyLong())).thenAnswer(invocation -> stored);
+        when(checkoutRequestMapper.creationAllowed(anyLong(), anyString())).thenReturn(1);
+        when(checkoutRequestMapper.finishSubmitted(anyLong(), anyString(), anyString(), anyBoolean()))
+                .thenAnswer(invocation -> {
+                    stored.setStatus(CheckoutRequest.STATUS_SUBMITTED);
+                    stored.setResultState(invocation.getArgument(2));
+                    stored.setCartCleanupRequired(invocation.getArgument(3));
+                    return 1;
+                });
+        when(checkoutRequestMapper.finishRejected(anyLong(), anyString(), anyString(), anyString()))
+                .thenAnswer(invocation -> {
+                    stored.setStatus(CheckoutRequest.STATUS_REJECTED);
+                    stored.setResultState(invocation.getArgument(2));
+                    stored.setLastError(invocation.getArgument(3));
+                    return 1;
+                });
+        when(checkoutRequestMapper.deferOwned(anyLong(), anyString(), anyString(), anyInt(), anyLong()))
+                .thenAnswer(invocation -> {
+                    stored.setRecoveryState(invocation.getArgument(3));
+                    return 1;
+                });
     }
 
     private void whenInsertHitsTheUniqueKey() {
@@ -769,6 +830,7 @@ class CheckoutServiceTest {
         record.setRequestDigest(digest);
         record.setStatus(status);
         record.setOrderId(orderId);
+        record.setTotalAmount(new BigDecimal("10.00"));
         return record;
     }
 

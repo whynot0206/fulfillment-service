@@ -1,0 +1,409 @@
+{
+  "runId": "e7937cd04af141009a8cb29a72acf17f",
+  "project": "fulfillment-acceptance",
+  "startedAtUtc": "2026-09-26T13:50:15.8237588Z",
+  "finishedAtUtc": "2026-09-26T13:50:41.6981693Z",
+  "passed": true,
+  "stoppedAt": null,
+  "users": [
+    {
+      "userId": "111",
+      "role": "owner"
+    },
+    {
+      "userId": "112",
+      "role": "other"
+    }
+  ],
+  "orders": [
+    {
+      "final": {
+        "events": 1,
+        "status": 2,
+        "userId": "111",
+        "orderId": "48664493036666886",
+        "tradeNo": "SEC-e7937cd04af141009a8cb29a72acf17f",
+        "lockRows": 1,
+        "sentEvents": 1,
+        "lockedUnits": 0,
+        "reservation": 1,
+        "releasedUnits": 0,
+        "confirmedUnits": 1
+      },
+      "orderId": "48664493036666886",
+      "totalAmount": 199.0,
+      "skuId": 1003,
+      "branch": "paid-callback",
+      "userId": "111"
+    },
+    {
+      "final": {
+        "events": 0,
+        "status": 3,
+        "userId": "111",
+        "orderId": "48664493349142535",
+        "tradeNo": null,
+        "lockRows": 1,
+        "sentEvents": 0,
+        "lockedUnits": 0,
+        "reservation": 3,
+        "releasedUnits": 1,
+        "confirmedUnits": 0
+      },
+      "orderId": "48664493349142535",
+      "totalAmount": 199.0,
+      "skuId": 1003,
+      "branch": "cross-trade-rejected",
+      "userId": "111"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "preflight.owned-containers",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.container-healthy",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.container-healthy",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.database-ready",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.F07-completed",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.proxy-18881-pass",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.proxy-18882-pass",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "register-owner.http",
+      "httpStatus": 201,
+      "passed": true
+    },
+    {
+      "name": "register-other.http",
+      "httpStatus": 201,
+      "passed": true
+    },
+    {
+      "name": "N01.tampered-jwt-port-18080.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N01.tampered-jwt-port-18080-code",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N01.expired-jwt-port-18080.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N01.expired-jwt-port-18080-code",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N01.tampered-jwt-port-18084.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N01.tampered-jwt-port-18084-code",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N01.expired-jwt-port-18084.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N01.expired-jwt-port-18084-code",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "paid-callback.add-sku.http",
+      "httpStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "paid-callback.one-unit",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "paid-callback.checkout.http",
+      "httpStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "paid-callback.exact-order-id",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "paid-callback.reserved",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "cross-trade-rejected.add-sku.http",
+      "httpStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "cross-trade-rejected.one-unit",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "cross-trade-rejected.checkout.http",
+      "httpStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "cross-trade-rejected.exact-order-id",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "cross-trade-rejected.reserved",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N02.anonymous-forged-user-denied.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.commerce-uses-bearer-not-user-header.http",
+      "httpStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "N02.me-remains-other-user",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N02.direct-commerce-header-without-jwt-denied.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.forged-owner-cannot-read.http",
+      "httpStatus": 404,
+      "passed": true
+    },
+    {
+      "name": "N02.forged-owner-cannot-pay.http",
+      "httpStatus": 404,
+      "passed": true
+    },
+    {
+      "name": "N02.forged-owner-cannot-cancel.http",
+      "httpStatus": 404,
+      "passed": true
+    },
+    {
+      "name": "N02.direct-order-missing-internal-token.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.direct-order-internal-missing-token.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.direct-inventory-missing-token.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.direct-payment-missing-token.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.direct-order-wrong-internal-token.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.direct-order-internal-wrong-token.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.direct-inventory-wrong-token.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.direct-payment-wrong-token.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N02.negative-calls-did-not-change-order",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.proxy-18881-pass",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.proxy-18882-pass",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N08.wrong-hmac-denied.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N08.expired-valid-hmac-denied.http",
+      "httpStatus": 401,
+      "passed": true
+    },
+    {
+      "name": "N08.invalid-callbacks-create-no-payment-event",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.proxy-18881-pass",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.proxy-18882-pass",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N08.valid-callback-1.http",
+      "httpStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "N08.valid-callback-1-accepted",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.proxy-18881-pass",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "preflight.proxy-18882-pass",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N08.valid-callback-2.http",
+      "httpStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "N08.valid-callback-2-accepted",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N08.same-order-different-trade-conflict.http",
+      "httpStatus": 409,
+      "passed": true
+    },
+    {
+      "name": "N08.same-order-different-trade-rejected",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N08.same-trade-different-order-conflict.http",
+      "httpStatus": 409,
+      "passed": true
+    },
+    {
+      "name": "N08.same-trade-different-order-rejected",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N08.conflicting-order-has-no-payment",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N08.paid-trade-unchanged-one-event-one-confirmed-unit",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N08.cancel-unpaid-fixture.http",
+      "httpStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "N08.cancel-accepted",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N08.unpaid-order-compensated-without-payment-event",
+      "httpStatus": null,
+      "passed": true
+    },
+    {
+      "name": "N02.other-account-remains-without-orders.http",
+      "httpStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "N02.other-account-order-count-zero",
+      "httpStatus": null,
+      "passed": true
+    }
+  ],
+  "cleanup": [
+    {
+      "orderId": "48664493036666886",
+      "result": "paid-preserved"
+    },
+    {
+      "orderId": "48664493349142535",
+      "result": "already-terminal"
+    }
+  ],
+  "scope": "N01/N02/N08 real HTTP plus read-only fixture SQL; local single-instance evidence, not a security audit.",
+  "retainedData": "Synthetic users/orders remain. Success pays one SKU 1003 unit and cancels/releases the other."
+}

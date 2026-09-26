@@ -1,6 +1,13 @@
 spring:
   application:
     name: commerce-service
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 1000
+            readTimeout: 3000
   datasource:
     url: ${COMMERCE_DATASOURCE_URL:jdbc:mysql://localhost:3306/fulfillment_commerce?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${COMMERCE_DB_USERNAME:fulfillment_commerce_app}
@@ -51,6 +58,16 @@ commerce:
     # 下单后多久没付款就释放预占的库存。这个值传给订单服务，
     # 由那边的超时回收任务执行——Commerce 只是转述用户的下单意图，不负责计时。
     order-timeout-seconds: ${COMMERCE_ORDER_TIMEOUT_SECONDS:1800}
+    recovery:
+      enabled: ${COMMERCE_CHECKOUT_RECOVERY_ENABLED:true}
+      poll-delay-ms: ${COMMERCE_CHECKOUT_RECOVERY_POLL_DELAY_MS:1000}
+      batch-size: ${COMMERCE_CHECKOUT_RECOVERY_BATCH_SIZE:20}
+      lease-seconds: ${COMMERCE_CHECKOUT_RECOVERY_LEASE_SECONDS:30}
+      max-attempts: ${COMMERCE_CHECKOUT_RECOVERY_MAX_ATTEMPTS:8}
+      base-backoff-seconds: ${COMMERCE_CHECKOUT_RECOVERY_BASE_BACKOFF_SECONDS:2}
+      max-backoff-seconds: ${COMMERCE_CHECKOUT_RECOVERY_MAX_BACKOFF_SECONDS:60}
+      max-window-seconds: ${COMMERCE_CHECKOUT_RECOVERY_MAX_WINDOW_SECONDS:1800}
+      manual-recheck-seconds: ${COMMERCE_CHECKOUT_RECOVERY_MANUAL_RECHECK_SECONDS:30}
 
 management:
   metrics:

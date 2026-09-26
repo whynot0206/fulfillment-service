@@ -19,3 +19,6 @@ performance/results/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Isolated acceptance metadata, logs and current-user DPAPI-encrypted credentials.
+.runtime/acceptance/

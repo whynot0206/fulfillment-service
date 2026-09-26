@@ -1,0 +1,268 @@
+{
+  "runId": "e3bc79305bcc4334b90d47aaa67a9df9",
+  "kind": "small-concurrency-correctness-smoke-not-load-test",
+  "startedAtUtc": "2026-09-26T13:51:53.4660102Z",
+  "finishedAtUtc": "2026-09-26T13:51:54.0242312Z",
+  "passed": true,
+  "stoppedAt": null,
+  "userId": "115",
+  "skuId": 1005,
+  "orderId": "48664650652319746",
+  "totalAmount": 89.0,
+  "finalOrderState": "CANCELED",
+  "finalReservationState": "COMPENSATED",
+  "checkoutResponses": [
+    {
+      "request": "checkout-1",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": false
+    },
+    {
+      "request": "checkout-2",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": true
+    },
+    {
+      "request": "checkout-3",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": true
+    },
+    {
+      "request": "checkout-4",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": true
+    },
+    {
+      "request": "checkout-5",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": true
+    },
+    {
+      "request": "checkout-6",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": true
+    },
+    {
+      "request": "checkout-7",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": true
+    },
+    {
+      "request": "checkout-8",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": true
+    },
+    {
+      "request": "checkout-9",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": true
+    },
+    {
+      "request": "checkout-10",
+      "httpStatus": 200,
+      "state": "RESERVED",
+      "code": null,
+      "orderId": "48664650652319746",
+      "replayed": true
+    }
+  ],
+  "raceResponses": [
+    {
+      "request": "payment",
+      "httpStatus": 409,
+      "state": null,
+      "paymentStatus": "REJECTED",
+      "orderId": "48664650652319746"
+    },
+    {
+      "request": "cancel",
+      "httpStatus": 200,
+      "state": "CANCELED",
+      "paymentStatus": null,
+      "orderId": "48664650652319746"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "register.http-201",
+      "passed": true
+    },
+    {
+      "name": "registration.token-present",
+      "passed": true
+    },
+    {
+      "name": "products.http-200",
+      "passed": true
+    },
+    {
+      "name": "product-detail.http-200",
+      "passed": true
+    },
+    {
+      "name": "catalog.has-stocked-sku",
+      "passed": true
+    },
+    {
+      "name": "add-one-item.http-200",
+      "passed": true
+    },
+    {
+      "name": "cart.one-line",
+      "passed": true
+    },
+    {
+      "name": "checkout-1.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-1.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout-2.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-2.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout-3.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-3.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout-4.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-4.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout-5.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-5.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout-6.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-6.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout-7.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-7.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout-8.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-8.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout-9.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-9.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout-10.success-or-in-progress",
+      "passed": true
+    },
+    {
+      "name": "checkout-10.exact-string-id",
+      "passed": true
+    },
+    {
+      "name": "checkout.at-least-one-success",
+      "passed": true
+    },
+    {
+      "name": "checkout.every-success-has-the-same-order",
+      "passed": true
+    },
+    {
+      "name": "list-after-concurrent-checkout.http-200",
+      "passed": true
+    },
+    {
+      "name": "checkout.exactly-one-owned-order",
+      "passed": true
+    },
+    {
+      "name": "checkout.pending-before-payment-cancel-race",
+      "passed": true
+    },
+    {
+      "name": "race.one-success-and-one-conflict",
+      "passed": true
+    },
+    {
+      "name": "race.response-matches-winner",
+      "passed": true
+    },
+    {
+      "name": "race.payment.exact-order-id",
+      "passed": true
+    },
+    {
+      "name": "race.cancel.exact-order-id",
+      "passed": true
+    },
+    {
+      "name": "race-final-order-0.http-200",
+      "passed": true
+    },
+    {
+      "name": "race.final-order-matches-winning-operation",
+      "passed": true
+    }
+  ],
+  "scope": "Gateway-only HTTP; verify inventory, lock records and Outbox independently using this order ID.",
+  "retainedData": "One synthetic user and one order remain. Payment winning may consume one unit."
+}

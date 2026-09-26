@@ -1,77 +1,95 @@
 package com.why.fulfillment.commerce.checkout.mapper;
 
 import com.why.fulfillment.commerce.checkout.entity.CheckoutRequest;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
-/**
- * 结算幂等记录。
- *
- * <p><b>这里没有「先查有没有、没有再插」的方法，是故意的。</b>查和插之间有窗口，
- * 同一个用户双击提交的两个请求可以同时查到「没有」，然后都去插。
- * 唯一键 uk_checkout_user_key 是唯一的裁判：让两个请求都去 insert，
- * 输的那个拿到 DuplicateKeyException，再按已有记录决定是重放还是冲突。</p>
- */
+import java.util.List;
+
+/** Immutable checkout intent plus database-clock leases; no remote call holds a DB transaction. */
 @Mapper
 public interface CheckoutRequestMapper {
+    String COLUMNS = "id,user_id,idempotency_key,request_digest,total_amount,order_id,status,last_error,"
+            + "create_time,update_time,request_payload,recovery_deadline,recovery_state,lease_owner,"
+            + "lease_until,attempt_count,next_retry_time,result_state,cart_cleanup_required";
 
-    /**
-     * 认领幂等键。唯一键冲突时抛 DuplicateKeyException，由调用方处理。
-     *
-     * <p>插入时 order_id 为 NULL、status 为「处理中」：订单号是下一步才产生的，
-     * 先占坑再回填。此时若进程崩溃，留下的就是一条 status=0 的记录，
-     * 它的存在本身就是「这次结算结果未知」的证据。</p>
-     */
+    /** The id, payload and initial lease become durable in the SAME unique-key-protected INSERT. */
     @Insert("""
-            insert into checkout_request (user_id, idempotency_key, request_digest, total_amount, order_id, status)
-            values (#{userId}, #{idempotencyKey}, #{requestDigest}, #{totalAmount}, null, 0)
+            insert into checkout_request
+              (user_id,idempotency_key,request_digest,total_amount,order_id,status,request_payload,
+               recovery_deadline,recovery_state,lease_owner,lease_until,attempt_count,next_retry_time)
+            values (#{userId},#{idempotencyKey},#{requestDigest},#{totalAmount},#{orderId},0,#{requestPayload},
+               timestampadd(second,#{recoveryWindowSeconds},current_timestamp),0,#{leaseOwner},
+               timestampadd(second,#{leaseSeconds},current_timestamp),1,current_timestamp)
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insertClaim(CheckoutRequest claim);
 
+    @Select("select " + COLUMNS + " from checkout_request where user_id=#{userId} and idempotency_key=#{idempotencyKey}")
+    CheckoutRequest selectByUserAndKey(@Param("userId") long userId, @Param("idempotencyKey") String key);
+
+    @Select("select " + COLUMNS + " from checkout_request where id=#{id}")
+    CheckoutRequest selectById(@Param("id") long id);
+
+    @Select("select " + COLUMNS + " from checkout_request where id=#{id} and status=0"
+            + " and lease_owner=#{owner} and lease_until>current_timestamp")
+    CheckoutRequest selectOwned(@Param("id") long id, @Param("owner") String owner);
+
     @Select("""
-            select id, user_id, idempotency_key, request_digest, total_amount, order_id, status,
-                   last_error, create_time, update_time
-              from checkout_request
-             where user_id = #{userId} and idempotency_key = #{idempotencyKey}
+            select id from checkout_request where status=0 and recovery_state=0
+              and (next_retry_time is null or next_retry_time<=current_timestamp)
+              and (lease_until is null or lease_until<=current_timestamp)
+            order by id limit #{limit}
             """)
-    CheckoutRequest selectByUserAndKey(@Param("userId") long userId,
-                                       @Param("idempotencyKey") String idempotencyKey);
+    List<Long> findReadyIds(@Param("limit") int limit);
 
-    /**
-     * 回填订单号并标记已提交。
-     *
-     * <p>WHERE 带 status = 0：只有还在「处理中」的记录才能被推进。
-     * 不加这个条件的话，一条已经拒绝的记录会被迟到的成功响应改成已提交。</p>
-     *
-     * @return 影响行数；0 表示这条记录已经被别的线程推进过了
-     */
     @Update("""
-            update checkout_request
-               set order_id = #{orderId}, status = 1, last_error = null
-             where id = #{id} and status = 0
+            update checkout_request set lease_owner=#{owner},
+              lease_until=timestampadd(second,#{leaseSeconds},current_timestamp),attempt_count=attempt_count+1
+            where id=#{id} and status=0 and recovery_state=#{recoveryState}
+              and (next_retry_time is null or next_retry_time<=current_timestamp)
+              and (lease_until is null or lease_until<=current_timestamp)
             """)
-    int markSubmitted(@Param("id") long id, @Param("orderId") long orderId);
+    int tryClaim(@Param("id") long id, @Param("owner") String owner,
+                 @Param("leaseSeconds") long seconds, @Param("recoveryState") int recoveryState);
 
-    /**
-     * 同上，标记拒绝。
-     *
-     * <p>{@code orderId} 可以为 null：订单号还没发出来就被拒的情况（比如价格已变），
-     * 确实没有订单可关联。MySQL 的唯一索引允许多行 NULL，所以这不会撞
-     * uk_checkout_order。已经发出订单号再被下游拒绝的情况则要把号记下来，
-     * 否则那个订单在 Commerce 这边就成了无主记录，排查时找不到来源。</p>
-     *
-     * <p>错误原因截断到 500 由调用方负责。</p>
-     */
-    @Update("""
-            update checkout_request
-               set status = 2, order_id = #{orderId}, last_error = #{error}
-             where id = #{id} and status = 0
+    @Select("""
+            select count(*) from checkout_request where id=#{id} and status=0 and recovery_state=0
+              and lease_owner=#{owner} and lease_until>current_timestamp and recovery_deadline>current_timestamp
             """)
-    int markRejected(@Param("id") long id, @Param("orderId") Long orderId,
-                     @Param("error") String error);
+    int creationAllowed(@Param("id") long id, @Param("owner") String owner);
+
+    @Update("""
+            update checkout_request set status=1,result_state=#{state},last_error=null,
+              cart_cleanup_required=#{cleanup},lease_owner=null,lease_until=null,next_retry_time=null
+            where id=#{id} and status=0 and lease_owner=#{owner} and lease_until>current_timestamp
+            """)
+    int finishSubmitted(@Param("id") long id, @Param("owner") String owner,
+                        @Param("state") String state, @Param("cleanup") boolean cleanup);
+
+    @Update("""
+            update checkout_request set cart_cleanup_required=0
+            where id=#{id} and status=1 and cart_cleanup_required=1
+            """)
+    int markCartCleaned(@Param("id") long id);
+
+    @Update("""
+            update checkout_request set status=2,result_state=#{state},last_error=#{error},
+              lease_owner=null,lease_until=null,next_retry_time=null
+            where id=#{id} and status=0 and lease_owner=#{owner} and lease_until>current_timestamp
+            """)
+    int finishRejected(@Param("id") long id, @Param("owner") String owner,
+                       @Param("state") String state, @Param("error") String error);
+
+    @Update("""
+            update checkout_request set last_error=#{error},recovery_state=#{recoveryState},
+              next_retry_time=timestampadd(second,#{delay},current_timestamp),lease_owner=null,lease_until=null
+            where id=#{id} and status=0 and lease_owner=#{owner} and lease_until>current_timestamp
+            """)
+    int deferOwned(@Param("id") long id, @Param("owner") String owner, @Param("error") String error,
+                   @Param("recoveryState") int state, @Param("delay") long delay);
 }

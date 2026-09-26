@@ -1,4 +1,4 @@
-import { currentToken, signOut } from '../stores/session'
+import { currentToken, signOut } from '../stores/session.js'
 
 /**
  * 统一的请求封装。
@@ -100,7 +100,9 @@ export async function request(path, options = {}) {
     return payload
   }
 
-  if (response.status === 401) {
+  if (response.status === 401 && !anonymous && token === currentToken()) {
+    // Only the still-current request token may invalidate this session. A late 401 from a
+    // signed-out account (or anonymous login) must not erase a newer user's login.
     // 令牌过期或无效。清掉本地状态再交给上层跳转——
     // 不清的话用户会卡在「一直跳登录页又一直带着坏令牌」的循环里。
     signOut()

@@ -1,7 +1,7 @@
 package com.why.fulfillment.order.metrics;
 
 import com.why.fulfillment.order.domain.RedisOrderCommand;
-import com.why.fulfillment.order.repository.OrderRepository;
+import com.why.fulfillment.order.repository.ConfirmationOutboxRepository;
 import com.why.fulfillment.order.repository.RedisOrderCommandRepository;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -36,15 +36,15 @@ public class OrderServiceMetrics {
             3, "dead");
 
     private final RedisOrderCommandRepository redisCommandRepository;
-    private final OrderRepository orderRepository;
+    private final ConfirmationOutboxRepository outboxRepository;
     private final Map<Integer, AtomicLong> redisCommandCounts;
     private final Map<Integer, AtomicLong> outboxCounts;
 
     public OrderServiceMetrics(MeterRegistry meterRegistry,
                                RedisOrderCommandRepository redisCommandRepository,
-                               OrderRepository orderRepository) {
+                               ConfirmationOutboxRepository outboxRepository) {
         this.redisCommandRepository = redisCommandRepository;
-        this.orderRepository = orderRepository;
+        this.outboxRepository = outboxRepository;
         this.redisCommandCounts = registerGauges(meterRegistry,
                 "fulfillment.order.redis.command.count", REDIS_COMMAND_STATUSES,
                 "Number of Redis order commands by durable workflow status");
@@ -70,7 +70,7 @@ public class OrderServiceMetrics {
 
     private void refreshOutboxCounts() {
         try {
-            applyCounts(outboxCounts, orderRepository.countConfirmationEventsByStatus());
+            applyCounts(outboxCounts, outboxRepository.countConfirmationEventsByStatus());
         } catch (RuntimeException exception) {
             log.warn("could not refresh order outbox metrics", exception);
         }

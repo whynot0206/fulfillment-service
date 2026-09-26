@@ -4,6 +4,7 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Commerce 模块化单体：用户、商品、购物车、结算入口。
@@ -14,6 +15,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 @SpringBootApplication
 @MapperScan("com.why.fulfillment.commerce.**.mapper")
 @EnableFeignClients(basePackages = "com.why.fulfillment.api")
+@EnableScheduling
 public class CommerceServiceApplication {
 
     public static void main(String[] args) {

@@ -121,21 +121,37 @@ public class CartService {
         cartCache.evictAfterTransaction(userId);
     }
 
-    /** 下单成功后清掉已结算条目。失败不抛——订单已经建好了，清车失败不该回滚订单。 */
+    /**
+     * Clear only immutable checkout snapshots. Partial matches remove only untouched rows;
+     * false means the caller must preserve its cleanup-required notice, not retry with weaker predicates.
+     * Database failure propagates to the checkout caller, which must not reinterpret it as order failure.
+     */
     @Transactional
-    public void removeCheckedOut(long userId, List<Long> skuIds) {
-        if (skuIds.isEmpty()) {
-            return;
+    public boolean removeCheckedOutSnapshot(long userId, List<CartItemSnapshot> snapshots) {
+        if (snapshots == null) {
+            return false;
         }
-        cartItemMapper.deleteByUserAndSkus(userId, skuIds);
+        if (snapshots.isEmpty()) {
+            return true;
+        }
+        if (snapshots.stream().anyMatch(snapshot -> snapshot == null
+                || snapshot.rowId() == null || snapshot.rowId() <= 0
+                || snapshot.revision() == null || snapshot.revision() < 0
+                || snapshot.skuId() == null || !Boolean.TRUE.equals(snapshot.selected()))
+                || snapshots.stream().map(CartItemSnapshot::rowId).distinct().count() != snapshots.size()) {
+            return false;
+        }
+        int removed = cartItemMapper.deleteUnchangedSnapshots(userId, snapshots);
         cartCache.evictAfterTransaction(userId);
+        return removed == snapshots.size();
     }
 
     private List<CartItemSnapshot> loadFromDatabase(long userId) {
         List<CartItem> rows = cartItemMapper.selectByUserId(userId);
         List<CartItemSnapshot> snapshots = new ArrayList<>(rows.size());
         for (CartItem row : rows) {
-            snapshots.add(new CartItemSnapshot(row.getSkuId(), row.getQuantity(), row.getSelected()));
+            snapshots.add(new CartItemSnapshot(row.getSkuId(), row.getQuantity(), row.getSelected(),
+                    row.getId(), row.getRevision()));
         }
         return snapshots;
     }

@@ -1,6 +1,7 @@
 package com.why.fulfillment.commerce.cart.mapper;
 
 import com.why.fulfillment.commerce.cart.entity.CartItem;
+import com.why.fulfillment.commerce.cart.service.CartItemSnapshot;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
@@ -8,7 +9,6 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
-import java.util.Collection;
 import java.util.List;
 
 /**
@@ -22,7 +22,7 @@ import java.util.List;
 public interface CartItemMapper {
 
     @Select("""
-            select id, user_id, sku_id, quantity, selected, create_time, update_time
+            select id, user_id, sku_id, quantity, selected, revision, create_time, update_time
             from cart_item where user_id = #{userId}
             order by update_time desc, id desc
             """)
@@ -32,7 +32,7 @@ public interface CartItemMapper {
     int countByUserId(@Param("userId") Long userId);
 
     @Select("""
-            select id, user_id, sku_id, quantity, selected, create_time, update_time
+            select id, user_id, sku_id, quantity, selected, revision, create_time, update_time
             from cart_item where user_id = #{userId} and sku_id = #{skuId}
             """)
     CartItem selectByUserAndSku(@Param("userId") Long userId, @Param("skuId") Long skuId);
@@ -53,7 +53,8 @@ public interface CartItemMapper {
             values (#{userId}, #{skuId}, #{quantity}, 1)
             on duplicate key update
               quantity = least(quantity + #{quantity}, #{maxQuantity}),
-              selected = 1
+              selected = 1,
+              revision = revision + 1
             """)
     int upsertAccumulate(@Param("userId") Long userId,
                          @Param("skuId") Long skuId,
@@ -61,7 +62,7 @@ public interface CartItemMapper {
                          @Param("maxQuantity") Integer maxQuantity);
 
     @Update("""
-            update cart_item set quantity = #{quantity}
+            update cart_item set quantity = #{quantity}, revision = revision + 1
             where user_id = #{userId} and sku_id = #{skuId}
             """)
     int updateQuantity(@Param("userId") Long userId,
@@ -69,7 +70,7 @@ public interface CartItemMapper {
                        @Param("quantity") Integer quantity);
 
     @Update("""
-            update cart_item set selected = #{selected}
+            update cart_item set selected = #{selected}, revision = revision + 1
             where user_id = #{userId} and sku_id = #{skuId}
             """)
     int updateSelected(@Param("userId") Long userId,
@@ -79,13 +80,16 @@ public interface CartItemMapper {
     @Delete("delete from cart_item where user_id = #{userId} and sku_id = #{skuId}")
     int delete(@Param("userId") Long userId, @Param("skuId") Long skuId);
 
-    /** 下单成功后清掉已结算的条目。 */
+    /** Only original, unchanged rows may be removed; new same-SKU rows or edits survive checkout. */
     @Delete("""
             <script>
             delete from cart_item
-            where user_id = #{userId} and sku_id in
-            <foreach item="id" collection="skuIds" open="(" separator="," close=")">#{id}</foreach>
+            where user_id = #{userId} and
+            <foreach item="snapshot" collection="snapshots" open="(" separator=" or " close=")">
+              (id = #{snapshot.rowId} and sku_id = #{snapshot.skuId} and revision = #{snapshot.revision})
+            </foreach>
             </script>
             """)
-    int deleteByUserAndSkus(@Param("userId") Long userId, @Param("skuIds") Collection<Long> skuIds);
+    int deleteUnchangedSnapshots(@Param("userId") Long userId,
+                                 @Param("snapshots") List<CartItemSnapshot> snapshots);
 }

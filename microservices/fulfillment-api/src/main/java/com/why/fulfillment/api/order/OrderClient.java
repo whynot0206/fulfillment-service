@@ -33,4 +33,8 @@ public interface OrderClient {
      */
     @PostMapping("/internal/orders")
     OrderCreateResponse create(@RequestBody OrderCreateRequest request);
+
+    /** Read existing order facts for the same snapshot; never creates an order or reserves stock. */
+    @PostMapping("/internal/orders/resolve-create")
+    OrderCreateResponse resolveCreate(@RequestBody OrderCreateRequest request);
 }

@@ -7,11 +7,11 @@ import com.why.fulfillment.commerce.checkout.entity.CheckoutRequest;
  *
  * <p>三种，缺一不可：</p>
  * <ul>
- *   <li>{@link Outcome#CLAIMED} —— 这个键是新的，继续下单，{@code claimId} 用于稍后回填订单号。</li>
- *   <li>{@link Outcome#REPLAY} —— 同键同载荷，已经有结果了，直接返回 {@code existing}，
+ *   <li>{@link Outcome#CLAIMED} —— 新键的订单号和完整快照已一起写入，继续远程下单。</li>
+ *   <li>{@link Outcome#REPLAY} —— 键已绑定原意图，金额确认一致时返回 {@code existing}，
  *       不要再下一次单。这是重试的正常答案，不是错误。</li>
- *   <li>{@link Outcome#CONFLICT} —— 同键不同载荷。前端复用了幂等键但购物车已经变了，
- *       两种意图撞在同一个键上，只能拒绝。悄悄按新载荷下单会让用户买到他没确认的东西。</li>
+ *   <li>{@link Outcome#CONFLICT} —— 同键金额不匹配或历史信息不完整，禁止按新购物车下单。
+ *       同键始终指向原意图，即使购物车已清空、改价或重新加购；新意图须使用新键。</li>
  * </ul>
  */
 public record IdempotencyClaim(Outcome outcome, Long claimId, CheckoutRequest existing) {

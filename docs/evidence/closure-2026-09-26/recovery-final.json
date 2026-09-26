@@ -1,0 +1,247 @@
+{
+  "scope": "Single-instance, real HTTP faults; no fabricated database business writes",
+  "stage": "R05-confirmation-failure-and-retry",
+  "checks": [
+    {
+      "passed": true,
+      "name": "synthetic-user-created"
+    },
+    {
+      "passed": true,
+      "name": "recovery-cart-added"
+    },
+    {
+      "passed": true,
+      "name": "lost-response-is-unknown-not-rejection"
+    },
+    {
+      "passed": true,
+      "name": "unknown-intent-has-durable-order-and-snapshot"
+    },
+    {
+      "passed": true,
+      "name": "intent-completes-after-commerce-restart"
+    },
+    {
+      "passed": true,
+      "name": "cart-can-be-modified-after-recovery"
+    },
+    {
+      "passed": true,
+      "name": "same-key-recovers-exact-original-order"
+    },
+    {
+      "passed": true,
+      "name": "recovered-response-warns-cart-retained"
+    },
+    {
+      "passed": true,
+      "name": "recovery-keeps-later-cart-edit"
+    },
+    {
+      "passed": true,
+      "name": "unknown-retry-creates-one-order"
+    },
+    {
+      "passed": true,
+      "name": "recovered-order-cancelable"
+    },
+    {
+      "passed": true,
+      "name": "quantity-edit.checkout-result-held"
+    },
+    {
+      "passed": true,
+      "name": "quantity-edit.mutation-succeeded"
+    },
+    {
+      "passed": true,
+      "name": "quantity-edit.checkout-succeeds-with-cleanup-warning"
+    },
+    {
+      "passed": true,
+      "name": "quantity-edit.later-cart-line-not-deleted"
+    },
+    {
+      "passed": true,
+      "name": "quantity-edit.original-order-canceled"
+    },
+    {
+      "passed": true,
+      "name": "delete-and-readd.checkout-result-held"
+    },
+    {
+      "passed": true,
+      "name": "delete-and-readd.mutation-succeeded"
+    },
+    {
+      "passed": true,
+      "name": "delete-and-readd.checkout-succeeds-with-cleanup-warning"
+    },
+    {
+      "passed": true,
+      "name": "delete-and-readd.later-cart-line-not-deleted"
+    },
+    {
+      "passed": true,
+      "name": "delete-and-readd.original-order-canceled"
+    },
+    {
+      "passed": true,
+      "name": "quantity-aba.checkout-result-held"
+    },
+    {
+      "passed": true,
+      "name": "quantity-aba.mutation-succeeded"
+    },
+    {
+      "passed": true,
+      "name": "quantity-aba.checkout-succeeds-with-cleanup-warning"
+    },
+    {
+      "passed": true,
+      "name": "quantity-aba.later-cart-line-not-deleted"
+    },
+    {
+      "passed": true,
+      "name": "quantity-aba.original-order-canceled"
+    },
+    {
+      "passed": true,
+      "name": "hold-before.reserve-request-held"
+    },
+    {
+      "passed": true,
+      "name": "hold-before.crash-leaves-real-reserving-intent"
+    },
+    {
+      "passed": true,
+      "name": "hold-before.pre-recovery-inventory-fact"
+    },
+    {
+      "passed": true,
+      "name": "hold-before.stale-reserving-cancels-and-compensates"
+    },
+    {
+      "passed": true,
+      "name": "hold-before.request-remains-held-until-after-compensation"
+    },
+    {
+      "passed": true,
+      "name": "hold-before.inventory-cancel-fence-committed"
+    },
+    {
+      "passed": true,
+      "name": "late-reserve-was-actually-forwarded-and-rejected"
+    },
+    {
+      "passed": true,
+      "name": "hold-before.late-reserve-cannot-relock-stock"
+    },
+    {
+      "passed": true,
+      "name": "hold-before.replay-cannot-revive-canceled-order"
+    },
+    {
+      "passed": true,
+      "name": "hold-after.reserve-request-held"
+    },
+    {
+      "passed": true,
+      "name": "hold-after.crash-leaves-real-reserving-intent"
+    },
+    {
+      "passed": true,
+      "name": "hold-after.pre-recovery-inventory-fact"
+    },
+    {
+      "passed": true,
+      "name": "hold-after.stale-reserving-cancels-and-compensates"
+    },
+    {
+      "passed": true,
+      "name": "hold-after.request-remains-held-until-after-compensation"
+    },
+    {
+      "passed": true,
+      "name": "hold-after.inventory-cancel-fence-committed"
+    },
+    {
+      "passed": true,
+      "name": "hold-after.late-reserve-cannot-relock-stock"
+    },
+    {
+      "passed": true,
+      "name": "hold-after.replay-cannot-revive-canceled-order"
+    },
+    {
+      "passed": true,
+      "name": "outbox-order-reserved"
+    },
+    {
+      "passed": true,
+      "name": "payment-commits-despite-confirmation-outage"
+    },
+    {
+      "passed": true,
+      "name": "failed-confirmation-retains-pending-event"
+    },
+    {
+      "passed": true,
+      "name": "paid-fact-survives-outbox-retry"
+    },
+    {
+      "passed": true,
+      "name": "stock-remains-locked-before-confirmation"
+    },
+    {
+      "passed": true,
+      "name": "outbox-event-eventually-sent"
+    },
+    {
+      "passed": true,
+      "name": "retry-confirms-exactly-one-reservation"
+    },
+    {
+      "passed": true,
+      "name": "duplicate-payment-still-accepted"
+    },
+    {
+      "passed": true,
+      "name": "duplicate-payment-does-not-create-second-event"
+    }
+  ],
+  "passed": true,
+  "project": "fulfillment-acceptance",
+  "orders": [
+    {
+      "branch": "lost-response",
+      "orderId": "48663675686355014"
+    },
+    {
+      "branch": "quantity-edit",
+      "orderId": "48663769512935424"
+    },
+    {
+      "branch": "delete-and-readd",
+      "orderId": "48663771733819393"
+    },
+    {
+      "branch": "quantity-aba",
+      "orderId": "48663773709336578"
+    },
+    {
+      "branch": "crash-hold-before",
+      "orderId": "900001790430296511"
+    },
+    {
+      "branch": "crash-hold-after",
+      "orderId": "900001790430359882"
+    },
+    {
+      "branch": "outbox-retry",
+      "orderId": "48664049740677123"
+    }
+  ],
+  "recordedAt": "2026-09-26T13:47:10.8832138Z"
+}

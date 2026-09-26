@@ -3,6 +3,8 @@ package com.why.fulfillment.order.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.why.fulfillment.api.inventory.InventoryClient;
 import com.why.fulfillment.api.inventory.InventoryRedisCompensateRequest;
 import com.why.fulfillment.api.inventory.InventoryRedisCompensateResponse;
@@ -223,7 +225,8 @@ public class RedisOrderApplicationService {
 
     public record RedisOrderItemCommand(Long skuId, Long spuId, Integer count, BigDecimal price) { }
 
-    public record RedisOrderResult(long orderId, Long commandId, String state,
+    public record RedisOrderResult(@JsonSerialize(using = ToStringSerializer.class) long orderId,
+                                   Long commandId, String state,
                                    String message, boolean replayed) { }
 
     public static class RedisProjectionPendingException extends RuntimeException {

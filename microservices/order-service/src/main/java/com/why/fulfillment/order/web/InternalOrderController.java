@@ -64,4 +64,12 @@ public class InternalOrderController {
         return new OrderCreateResponse(result.orderId(), result.state(), result.message(),
                 result.replayed());
     }
+
+    /** Read-only reconciliation after Commerce's automatic creation window has closed. */
+    @PostMapping("/resolve-create")
+    public OrderCreateResponse resolveCreate(@RequestBody OrderCreateRequest request) {
+        OrderApplicationService.CreateOrderResult result = service.resolveCreateFromCommerce(request);
+        return new OrderCreateResponse(result.orderId(), result.state(), result.message(),
+                result.replayed());
+    }
 }

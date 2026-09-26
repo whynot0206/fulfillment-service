@@ -1,47 +1,122 @@
-const STORAGE_KEY = 'fulfillment.checkoutKey'
+const LEGACY_KEY = 'fulfillment.checkoutKey'
+const INTENT_PREFIX = 'fulfillment.checkoutIntent.'
+
+function recoveryError(message) {
+  const error = new Error(message)
+  error.code = 'CHECKOUT_RECOVERY_REQUIRED'
+  return error
+}
+
+function accountKey(userId) {
+  if (userId === null || userId === undefined || String(userId).trim() === '') {
+    throw recoveryError('登录身份已变化，请重新登录后核对原结算')
+  }
+  return `${INTENT_PREFIX}${userId}`
+}
 
 /**
- * 结算幂等键的生命周期。
- *
- * <p>这个文件很短，但它是整个前端里唯一和后端并发语义直接对接的地方，
- * 三条规则都要能讲清楚为什么：</p>
- *
- * <ol>
- *   <li><b>键由前端生成。</b>幂等要挡的是「同一次用户操作被发了多次」——双击、
- *       超时后手动重试、断网重连。只有前端知道这三次请求是同一次操作。
- *       如果让后端生成，每个到达的请求都会拿到一个新键，等于没做幂等。</li>
- *   <li><b>失败重试要复用同一个键。</b>这是幂等的全部意义。上一次提交可能已经
- *       在后端建好了订单，只是响应丢了；带着同一个键重试，后端会认出这是重放，
- *       把上次的结果还给你，而不是再建一张订单。换个新键就等于说
- *       「这是一次新的下单」，于是用户收到两张订单。</li>
- *   <li><b>只在下单成功后换新键。</b>换早了会重复下单，不换会导致下一次真正的
- *       新订单被误判成重放（同键异载荷 → 409 IDEMPOTENCY_KEY_REUSED）。</li>
- * </ol>
- *
- * <p>存在 localStorage 而不是组件内存里，是为了覆盖「提交时页面崩了/被刷新了」
- * 这种情况——那正是最需要幂等的时刻。放在组件 state 里，刷新一次键就丢了。</p>
+ * Same-origin tabs serialize creation/rotation with Web Locks, not a localStorage read/write race.
+ * No unlocked fallback: an unsupported/insecure browser must not silently weaken idempotency.
  */
+async function withIntentLock(userId, action) {
+  const storageKey = accountKey(userId)
+  if (!globalThis.navigator?.locks?.request) {
+    throw recoveryError('当前浏览器不支持安全保存结算凭证，请使用 localhost 或 HTTPS 下的现代浏览器')
+  }
+  return globalThis.navigator.locks.request(storageKey, () => action(storageKey))
+}
 
 function newKey() {
   if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
     return globalThis.crypto.randomUUID()
   }
-  // 兜底：randomUUID 需要安全上下文（https 或 localhost）。
-  // 这里的随机性只用于「区分不同的用户操作」，不用于安全，所以够用。
   return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
 
-/** 拿到当前这次结算用的键；没有就生成一个并记下来。 */
-export function currentCheckoutKey() {
-  let key = localStorage.getItem(STORAGE_KEY)
-  if (!key) {
-    key = newKey()
-    localStorage.setItem(STORAGE_KEY, key)
+function parseRecord(raw) {
+  try {
+    const value = JSON.parse(raw)
+    if (!value || typeof value !== 'object'
+        || (value.key !== null && (typeof value.key !== 'string' || !value.key.trim()))
+        || (value.amount !== null && (typeof value.amount !== 'number'
+          || !Number.isFinite(value.amount) || value.amount < 0))) {
+      throw new Error('invalid')
+    }
+    return value
+  } catch {
+    // Do not erase possibly unresolved intent on corruption and generate a second purchase.
+    throw recoveryError('本地结算凭证需要核对，请保留浏览器数据并先查看原订单')
   }
-  return key
 }
 
-/** 下单成功后调用。下一次结算会拿到一个新键。 */
-export function rotateCheckoutKey() {
-  localStorage.removeItem(STORAGE_KEY)
+/**
+ * Keep the old global value for other accounts. A user's old amount record is the best available
+ * association, even if another account already rotated the global key. No old identity is guessed.
+ * The scoped null-key tombstone prevents completed legacy keys from being imported again.
+ */
+function readOrMigrate(storageKey, userId) {
+  const current = localStorage.getItem(storageKey)
+  if (current !== null) return parseRecord(current)
+
+  const amountRaw = localStorage.getItem(`${LEGACY_KEY}.amount.${userId}`)
+  const oldAmount = amountRaw === null ? null : parseRecord(amountRaw)
+  const legacyKey = oldAmount?.key || localStorage.getItem(LEGACY_KEY)
+  const record = { key: legacyKey || null, amount: oldAmount?.amount ?? null }
+  localStorage.setItem(storageKey, JSON.stringify(record))
+  return record
+}
+
+/** A scoped key survives logout/reload; a completed intent leaves a migration tombstone. */
+export async function currentCheckoutKey(userId) {
+  return withIntentLock(userId, storageKey => {
+    const intent = readOrMigrate(storageKey, userId)
+    if (!intent.key) {
+      intent.key = newKey()
+      intent.amount = null
+      localStorage.setItem(storageKey, JSON.stringify(intent))
+    }
+    return intent.key
+  })
+}
+
+/** Only the response for this exact active key may complete it; late responses are harmless. */
+export async function rotateCheckoutKey(userId, expectedKey, stillActive = () => true) {
+  return withIntentLock(userId, storageKey => {
+    if (!stillActive()) return false
+    const raw = localStorage.getItem(storageKey)
+    if (raw === null || !expectedKey || parseRecord(raw).key !== expectedKey) return false
+    localStorage.setItem(storageKey, JSON.stringify({ key: null, amount: null }))
+    return true
+  })
+}
+
+/** Freeze the original agreed amount, using the same lock and record as the user's retry key. */
+export async function checkoutExpectedAmount(key, currentAmount, userId) {
+  return withIntentLock(userId, storageKey => {
+    const intent = readOrMigrate(storageKey, userId)
+    if (!key || intent.key !== key) {
+      throw recoveryError('另一页面已变更结算凭证，请先核对原订单后刷新')
+    }
+    if (intent.amount !== null) return intent.amount
+    if (typeof currentAmount !== 'number' || !Number.isFinite(currentAmount) || currentAmount < 0) {
+      throw recoveryError('结算金额不可用，请先刷新购物车')
+    }
+    intent.amount = currentAmount
+    localStorage.setItem(storageKey, JSON.stringify(intent))
+    return currentAmount
+  })
+}
+
+/** A known pre-intent rejection may refresh ONLY the amount belonging to its original key. */
+export async function forgetCheckoutAmount(userId, expectedKey, stillActive = () => true) {
+  return withIntentLock(userId, storageKey => {
+    if (!stillActive()) return false
+    const raw = localStorage.getItem(storageKey)
+    if (raw === null) return false
+    const intent = parseRecord(raw)
+    if (!expectedKey || intent.key !== expectedKey) return false
+    intent.amount = null
+    localStorage.setItem(storageKey, JSON.stringify(intent))
+    return true
+  })
 }

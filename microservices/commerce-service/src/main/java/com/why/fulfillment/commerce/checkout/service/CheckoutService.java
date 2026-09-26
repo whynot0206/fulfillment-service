@@ -1,9 +1,7 @@
 package com.why.fulfillment.commerce.checkout.service;
 
-import com.why.fulfillment.api.order.OrderClient;
 import com.why.fulfillment.api.order.OrderCreateItem;
 import com.why.fulfillment.api.order.OrderCreateRequest;
-import com.why.fulfillment.api.order.OrderCreateResponse;
 import com.why.fulfillment.commerce.cart.service.CartItemSnapshot;
 import com.why.fulfillment.commerce.cart.service.CartService;
 import com.why.fulfillment.commerce.checkout.dto.CheckoutResultView;
@@ -61,24 +59,14 @@ public class CheckoutService {
 
     private static final Logger log = LoggerFactory.getLogger(CheckoutService.class);
 
-    private static final int MAX_ERROR_LENGTH = 500;
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 128;
-
-    /**
-     * 订单服务返回的「补偿中」——它自己也还不知道结果。
-     *
-     * <p>用字符串比而不是引 {@code ReservationStatus}：那个枚举在 order-service 模块里，
-     * Commerce 依赖它就等于依赖了对方的内部领域模型。跨服务的契约只能是
-     * fulfillment-api 里那几个 record 加上约定好的状态字面量。</p>
-     */
-    private static final String STATE_PENDING_COMPENSATION = "PENDING_COMPENSATION";
 
     private final CartService cartService;
     private final ProductSkuMapper skuMapper;
     private final ProductSpuMapper spuMapper;
     private final SkuAvailabilityService availabilityService;
     private final CheckoutRequestMapper checkoutRequestMapper;
-    private final OrderClient orderClient;
+    private final CheckoutRecoveryService recoveryService;
     private final OrderIdGenerator orderIdGenerator;
     private final long orderTimeoutSeconds;
 
@@ -87,7 +75,7 @@ public class CheckoutService {
                            ProductSpuMapper spuMapper,
                            SkuAvailabilityService availabilityService,
                            CheckoutRequestMapper checkoutRequestMapper,
-                           OrderClient orderClient,
+                           CheckoutRecoveryService recoveryService,
                            OrderIdGenerator orderIdGenerator,
                            @Value("${commerce.checkout.order-timeout-seconds:1800}") long orderTimeoutSeconds) {
         this.cartService = cartService;
@@ -95,7 +83,7 @@ public class CheckoutService {
         this.spuMapper = spuMapper;
         this.availabilityService = availabilityService;
         this.checkoutRequestMapper = checkoutRequestMapper;
-        this.orderClient = orderClient;
+        this.recoveryService = recoveryService;
         this.orderIdGenerator = orderIdGenerator;
         this.orderTimeoutSeconds = orderTimeoutSeconds;
     }
@@ -117,83 +105,47 @@ public class CheckoutService {
      */
     public CheckoutResultView submit(long userId, String idempotencyKey, CheckoutSubmitRequest request) {
         String key = normalizeKey(idempotencyKey);
-
-        List<CartItemSnapshot> selected = cartService.selectedItems(userId);
-        if (selected.isEmpty()) {
-            CheckoutRequest existing = checkoutRequestMapper.selectByUserAndKey(userId, key);
-            if (existing != null) {
-                if (existing.getTotalAmount() == null || request.expectedAmount() == null
-                        || existing.getTotalAmount().compareTo(request.expectedAmount()) != 0) {
-                    throw CommerceException.conflict("IDEMPOTENCY_KEY_REUSED",
-                            "这个提交凭证已经用于另一笔结算，请刷新购物车后重试");
-                }
-                return replayOf(existing, existing.getTotalAmount());
-            }
-            throw CommerceException.badRequest("CART_EMPTY", "没有勾选任何商品");
+        // Existing intent wins BEFORE reading today's cart/catalog. A retry can follow a cleared cart,
+        // a price change, or newly added items; none of those may redefine the original intent.
+        CheckoutRequest existing = checkoutRequestMapper.selectByUserAndKey(userId, key);
+        if (existing != null) {
+            requireSameIntentAmount(existing, request.expectedAmount());
+            return recoveryService.replay(existing);
         }
-
+        List<CartItemSnapshot> selected = cartService.selectedItems(userId);
         List<CheckoutLine> lines = revalidate(userId, selected);
         BigDecimal total = sum(lines);
         requireAmountUnchanged(request.expectedAmount(), total);
 
-        String digest = digest(userId, lines, total);
-        IdempotencyClaim claim = claimIdempotencyKey(userId, key, digest, total);
-
-        switch (claim.outcome()) {
-            case REPLAY -> {
-                return replayOf(claim.existing(), total);
-            }
-            case CONFLICT -> throw CommerceException.conflict("IDEMPOTENCY_KEY_REUSED",
-                    "这个提交凭证已经用于另一笔结算，请刷新购物车后重试");
-            case CLAIMED -> {
-                // 继续往下走
-            }
+        CheckoutRequest prepared = recoveryService.prepare(userId, key, digest(userId, lines, total),
+                toOrderRequest(orderIdGenerator.next(), userId, total, lines));
+        IdempotencyClaim claim = claimIdempotencyKey(prepared);
+        if (claim.outcome() == IdempotencyClaim.Outcome.CONFLICT) {
+            throw CommerceException.conflict("IDEMPOTENCY_KEY_REUSED",
+                    "这个提交凭证已经用于另一笔结算，请保留原凭证核对原订单");
         }
-
-        long orderId = orderIdGenerator.next();
-        OrderCreateResponse response;
-        try {
-            response = orderClient.create(toOrderRequest(orderId, userId, total, lines));
-        } catch (RuntimeException exception) {
-            // 调用失败不等于订单没建成——请求可能已经到了对面，只是响应丢了。
-            // 所以这条幂等记录**保持「处理中」**，不标记为拒绝。
-            // 标记成拒绝的话，用户重试会拿到「已拒绝」，而那张订单其实存在并且占着库存。
-            log.warn("Checkout call to order-service failed for user {} order {}: {}",
-                    userId, orderId, exception.toString());
-            throw CommerceException.conflict("CHECKOUT_RESULT_UNKNOWN",
-                    "下单结果未知，请稍后在订单列表确认，不要重复提交");
+        if (claim.outcome() == IdempotencyClaim.Outcome.REPLAY) {
+            return recoveryService.replay(claim.existing());
         }
-
-        if (response == null) {
-            // Feign 给了个空响应体。这和上面抛异常是同一类情况：我们不知道对面
-            // 到底建没建成。**不要**标记为拒绝——标了就等于替订单服务下了「没建成」
-            // 的结论，而那张订单可能存在并且占着库存。保持「处理中」，让重试去认领。
-            log.warn("Checkout got an empty response from order-service for user {} order {}", userId, orderId);
-            throw CommerceException.conflict("CHECKOUT_RESULT_UNKNOWN",
-                    "下单结果未知，请稍后在订单列表确认，不要重复提交");
+        CheckoutRecoveryService.InitialResult execution = recoveryService.executeInitial(prepared);
+        CheckoutResultView result = execution.view();
+        if (execution.cleanupEligible() && clearCheckedOutItems(prepared.getId(), result.orderId(), userId, selected)) {
+            return new CheckoutResultView(result.orderId(), result.state(), "原结算已确认，请查看订单当前状态",
+                    result.totalAmount(), result.replayed(), false);
         }
+        return result;
+    }
 
-        if (response.reserved()) {
-            checkoutRequestMapper.markSubmitted(claim.claimId(), orderId);
-            clearCheckedOutItems(orderId, userId, lines);
-            return new CheckoutResultView(orderId, response.state(), "下单成功，请尽快付款",
-                    total, response.replayed());
+    private static void requireSameIntentAmount(CheckoutRequest existing, BigDecimal expected) {
+        // Legacy incomplete records cannot be safely reconstructed, even if the current cart matches.
+        if (existing.getTotalAmount() == null) {
+            throw CommerceException.conflict("CHECKOUT_RECOVERY_REQUIRED",
+                    "历史结算信息不足，需要人工核对；请保留原提交凭证");
         }
-
-        if (STATE_PENDING_COMPENSATION.equals(response.state())) {
-            // 订单服务自己也不知道库存到底占上了没有，正在补偿。
-            // 这里跟着说「不知道」，同样**保持「处理中」**：
-            // 记成拒绝的话，补偿如果最终判定为「已预占」，就出现了一张
-            // 我们这边标记为失败、实际却存在的订单。
-            log.warn("Order {} for user {} came back as {}", orderId, userId, response.state());
-            throw CommerceException.conflict("CHECKOUT_RESULT_UNKNOWN",
-                    "下单结果未知，请稍后在订单列表确认，不要重复提交");
+        if (expected == null || existing.getTotalAmount().compareTo(expected) != 0) {
+            throw CommerceException.conflict("IDEMPOTENCY_KEY_REUSED",
+                    "这个提交凭证已经绑定原结算金额，请保留原凭证核对原订单");
         }
-
-        // 剩下的是确定的失败：FAILED（库存不足）、COMPENSATED（已回滚）、CONFLICT。
-        checkoutRequestMapper.markRejected(claim.claimId(), orderId, truncate(response.message()));
-        return new CheckoutResultView(orderId, response.state(),
-                response.message() == null ? "下单失败" : response.message(), total, response.replayed());
     }
 
     /**
@@ -202,33 +154,15 @@ public class CheckoutService {
      * <p>清车失败不能让整个结算失败：订单已经建好、库存已经占上了，
      * 这时候抛异常只会让用户以为没下单成功，然后再下一单。</p>
      */
-    private void clearCheckedOutItems(long orderId, long userId, List<CheckoutLine> lines) {
+    private boolean clearCheckedOutItems(long intentId, long orderId, long userId, List<CartItemSnapshot> selected) {
         try {
-            cartService.removeCheckedOut(userId, lines.stream().map(CheckoutLine::skuId).toList());
+            return cartService.removeCheckedOutSnapshot(userId, selected)
+                    && checkoutRequestMapper.markCartCleaned(intentId) == 1;
         } catch (RuntimeException exception) {
-            log.warn("Order {} was created but clearing the cart failed for user {}: {}",
-                    orderId, userId, exception.toString());
+            log.warn("Order {} was created but clearing the cart failed for user {} ({})",
+                    orderId, userId, exception.getClass().getSimpleName());
+            return false;
         }
-    }
-
-    private CheckoutResultView replayOf(CheckoutRequest existing, BigDecimal total) {
-        if (existing == null) {
-            throw new IllegalStateException("a REPLAY claim must carry the existing record");
-        }
-        Integer status = existing.getStatus();
-        if (status != null && status == CheckoutRequest.STATUS_SUBMITTED) {
-            return new CheckoutResultView(existing.getOrderId(), "RESERVED",
-                    "这笔结算已经提交过了", total, true);
-        }
-        if (status != null && status == CheckoutRequest.STATUS_REJECTED) {
-            return new CheckoutResultView(existing.getOrderId(), "FAILED",
-                    existing.getLastError() == null ? "这笔结算已被拒绝" : existing.getLastError(),
-                    total, true);
-        }
-        // status = 处理中。上一次请求没能走完，结果未知。
-        // 这里不能替用户重新下一单：上一单可能已经成功了，只是我们没记下来。
-        throw CommerceException.conflict("CHECKOUT_IN_PROGRESS",
-                "上一次提交结果未知，请先到订单列表确认，不要重复提交");
     }
 
     private OrderCreateRequest toOrderRequest(long orderId, long userId, BigDecimal total,
@@ -267,13 +201,6 @@ public class CheckoutService {
                     "Idempotency-Key 最长 " + MAX_IDEMPOTENCY_KEY_LENGTH + " 个字符");
         }
         return key;
-    }
-
-    private static String truncate(String message) {
-        if (message == null) {
-            return null;
-        }
-        return message.length() <= MAX_ERROR_LENGTH ? message : message.substring(0, MAX_ERROR_LENGTH);
     }
 
     // =================================================================================
@@ -392,55 +319,22 @@ public class CheckoutService {
     }
 
     /**
-     * 认领幂等键。
-     *
-     * <p>这是整条链路里唯一一处真正的并发控制点，也是最容易写错的地方。</p>
-     *
-     * <p><b>不要写成「先查有没有，没有再插」。</b>同一个用户双击提交的两个请求
-     * 可以同时查到「没有」，然后都去插，其中一个撞唯一键炸出 500。
-     * 正确的写法是<b>直接插</b>，让 {@code uk_checkout_user_key} 当裁判：</p>
-     * <ol>
-     *   <li>调 {@code checkoutRequestMapper.insertClaim(...)}。插成功 →
-     *       {@link IdempotencyClaim#claimed} ，claimId 取回填到实体上的自增主键
-     *       （mapper 上已经配了 {@code useGeneratedKeys}）。</li>
-     *   <li>捕获 {@code org.springframework.dao.DuplicateKeyException} → 说明这个键已经有人用了。
-     *       此时再 {@code selectByUserAndKey} 把已有记录查出来：
-     *       <ul>
-     *         <li>摘要相同 → {@link IdempotencyClaim#replay}，把已有记录带回去。</li>
-     *         <li>摘要不同 → {@link IdempotencyClaim#conflict}。</li>
-     *       </ul>
-     *       只有在这个分支里才需要查询——「先插后查」和「先查后插」的区别就在这儿：
-     *       查询只发生在确定有冲突之后，不存在窗口。</li>
-     *   <li>查不到（并发删除等极端情况）→ 把原异常抛出去，不要假装成功。</li>
-     * </ol>
-     *
-     * <p>摘要比较用 {@code equals} 就够——它不是签名，对手是重复提交，不是伪造者。
-     * 这和 JWT 那边为什么要用 {@code MessageDigest.isEqual} 是不同的场景，
-     * 面试被问到时要能分清。</p>
-     *
-     * <p><b>还要想一个问题：</b>查到的记录 status 是「处理中」时该返回什么？
-     * 它既不是成功也不是失败。测试里钉了一种答案，先自己想一遍再去看。</p>
+     * The early lookup is only a replay optimization. This unique-key INSERT is the concurrency
+     * arbiter and persists the full intent before ANY remote call. A race loser uses the winner's
+     * immutable intent, never its newly read cart or newly allocated (unused) id.
      */
-    IdempotencyClaim claimIdempotencyKey(long userId, String idempotencyKey, String digest) {
-        return claimIdempotencyKey(userId, idempotencyKey, digest, null);
-    }
-
-    private IdempotencyClaim claimIdempotencyKey(long userId, String idempotencyKey,
-                                               String digest, BigDecimal total) {
-        CheckoutRequest claim = new CheckoutRequest();
-        claim.setUserId(userId);
-        claim.setIdempotencyKey(idempotencyKey);
-        claim.setRequestDigest(digest);
-        claim.setTotalAmount(total);
+    IdempotencyClaim claimIdempotencyKey(CheckoutRequest claim) {
         try {
             checkoutRequestMapper.insertClaim(claim);
             return IdempotencyClaim.claimed(claim.getId());
         } catch (DuplicateKeyException exception) {
-            CheckoutRequest existing = checkoutRequestMapper.selectByUserAndKey(userId, idempotencyKey);
+            CheckoutRequest existing = checkoutRequestMapper.selectByUserAndKey(
+                    claim.getUserId(), claim.getIdempotencyKey());
             if (existing == null) {
                 throw exception;
             }
-            return digest.equals(existing.getRequestDigest())
+            return existing.getTotalAmount() != null && claim.getTotalAmount() != null
+                    && existing.getTotalAmount().compareTo(claim.getTotalAmount()) == 0
                     ? IdempotencyClaim.replay(existing) : IdempotencyClaim.conflict(existing);
         }
     }
